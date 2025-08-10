@@ -8,11 +8,11 @@
 enum class SymbolType: int {
     LITERAL,
     VARIABLE,
+    CONSTANT,
     ARGUMENT,
     FUNCTION,
     CLOUSURE,
     CLASS,
-    ARRAY
 };
 
 enum class SymbolDataType: int {
@@ -24,18 +24,20 @@ enum class SymbolDataType: int {
     NIL,
 };
 
+struct Table;
 /*
 name - Identificacion
-label - Etiqueta identificadora:
-    Si es VARIABLE de tipo de dato OBJECT, indica la clase de la que es instancia.
-    Si es FUNCTION, indica a cual clase pertenece.
+parent - Etiqueta identificadora:
+    Si es VARIABLE de tipo de dato OBJECT, indica de que clase es instancia.
     Si es CLASS, indica de que clase hereda
 type - Tipo de simbolo
 data_type - Tipo de dato. 
 value - Valor contenido en la variable.
 arg_list - Lista de argumentos para una funcion o cerradura.
-prop_list - Lista de propiedades de una clase u objeto.
-size - Tamaño del símbolo
+definition - Exclusivo de clases y funciones, contiene una referencia a la tabla de simbolos
+    donde fue definida la funcion o la clase.
+size - Tamaño del símbolo, si es un array, indica el tamaño del array
+dimentions - Dimensiones del array, 0 si es un tipo de dato normal
 offset - ubicacion en memoria
 
 */
@@ -45,23 +47,25 @@ struct Symbol {
     SymbolType type;
     SymbolDataType data_type; 
     std::string value;
-    std::vector<std::string> arg_list;
-    std::vector<std::string> prop_list;
+    std::vector<Symbol> arg_list;
+    std::weak_ptr<Table> definition;
     int size;
+    int dimentions;
     int offset;
+};
+
+struct Table { 
+    std::weak_ptr<Table> parent;
+    std::vector<std::shared_ptr<Table>> children;
+    std::unordered_map<std::string, Symbol> table;
 };
 
 class SymbolTable
 {
 private:
 
-    struct Table { 
-        std::weak_ptr<Table> parent;
-        std::vector<std::shared_ptr<Table>> children;
-        std::unordered_map<std::string, Symbol> table;
-    };
-
-    std::shared_ptr<Table> current;
+    std::shared_ptr<Table> global;
+    std::weak_ptr<Table> current;
     
 public:
     SymbolTable();

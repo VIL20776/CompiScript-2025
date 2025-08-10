@@ -16,13 +16,16 @@ void test_stream(const std::string &stream, SemanticChecker *checker) {
     checker->visitProgram(parser.program());
 }
 
-TEST_CASE("Variable declaration", "[Data types]") {
+TEST_CASE("Variable testing", "[Data types]") {
     SemanticChecker checker {};
     test_stream(R"(
 let a: integer = 10;
 let b: string = "hola";
 let c: boolean = true;
 let d = null;
+
+let nombre: string;
+nombre = "Compiscript";
                 )", &checker);
 
     auto table = checker.getSymbolTable();
@@ -31,6 +34,7 @@ let d = null;
         REQUIRE(table.lookup("b").second);
         REQUIRE(table.lookup("c").second);
         REQUIRE(table.lookup("d").second);
+        REQUIRE(table.lookup("nombre").second);
     }
     
     SECTION("Checking variable data") {
@@ -50,6 +54,10 @@ let d = null;
         auto d = table.lookup("d").first;
         REQUIRE(d.data_type == SymbolDataType::NIL);
         REQUIRE(d.value == "");
+
+        auto nombre = table.lookup("nombre").first;
+        REQUIRE(nombre.data_type == SymbolDataType::STRING);
+        REQUIRE(nombre.value == "\"Compiscript\"");
     }
 }
 
@@ -62,4 +70,29 @@ let z = (1 + 2) * 3;
                 )", &checker);
 
     auto table = checker.getSymbolTable();
+
+    SECTION("Checking variable types") {
+        auto x = table.lookup("x").first;
+        REQUIRE(x.data_type == SymbolDataType::INTEGER);
+
+        auto y = table.lookup("y").first;
+        REQUIRE(y.data_type == SymbolDataType::BOOLEAN);
+
+        auto z = table.lookup("z").first;
+        REQUIRE(z.data_type == SymbolDataType::INTEGER);
+    }
+}
+
+TEST_CASE("Constant", "[Operations]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+const KiB: integer = 1024;
+                )", &checker);
+
+    auto table = checker.getSymbolTable();
+
+    SECTION("Checking constant declaration") {
+        auto kib = table.lookup("KiB").first;
+        REQUIRE(kib.data_type == SymbolDataType::INTEGER);
+    }
 }

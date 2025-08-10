@@ -1,15 +1,23 @@
-#include <cstdio>
 #include <string>
 #include <print>
 #include <regex>
 #include <any>
 
+#include "CompiScriptParser.h"
 #include "SymbolTable.h"
 #include "SemanticChecker.h"
 
 using namespace CompiScript;
 
 // Helper functions
+
+std::any makeAny(Symbol symbol) {
+    return std::make_any<Symbol>(symbol);
+}
+
+Symbol castSymbol(std::any symbol) {
+    return std::any_cast<Symbol>(symbol);
+}
 
 SymbolDataType getSymbolDataType(std::string type_name) {
     if (type_name == "integer") return SymbolDataType::INTEGER;
@@ -19,18 +27,19 @@ SymbolDataType getSymbolDataType(std::string type_name) {
 }
 
 std::string getSymbolDataTypeString(SymbolDataType type) {
+    std::string string_type;
     switch (type) {
-        case SymbolDataType::UNDEFINED: return "undefined";
-        case SymbolDataType::INTEGER: return "integer";
-        case SymbolDataType::BOOLEAN: return "boolean";
-        case SymbolDataType::STRING: return "string";
-        case SymbolDataType::OBJECT: return "TODO";
-        case SymbolDataType::NIL: return "null";
+        case SymbolDataType::UNDEFINED: string_type = "undefined"; break;
+        case SymbolDataType::INTEGER: string_type = "integer"; break;
+        case SymbolDataType::BOOLEAN: string_type = "boolean"; break;
+        case SymbolDataType::STRING: string_type = "string"; break;
+        case SymbolDataType::OBJECT: string_type = "object"; break;
+        case SymbolDataType::NIL: string_type = "null"; break;
     }
-    return "";
+    return string_type;
 }
 
-SemanticChecker::SemanticChecker(): table() {}
+SemanticChecker::SemanticChecker(): table(), error_count(0), context(Context::NORMAL) {}
 SemanticChecker::~SemanticChecker() {}
 
 //SemanticChecker implementations
@@ -40,10 +49,35 @@ std::any SemanticChecker::visitProgram(CompiScriptParser::ProgramContext *ctx) {
 }
 
 std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ctx) {
+    if (ctx->returnStatement() != nullptr)  {
+        if (context != Context::FUNCTION)
+            std::println("Error: Invalid 'return' outside function.");
+        else
+            return visitReturnStatement(ctx->returnStatement());
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitBlock(CompiScriptParser::BlockContext *ctx) {
+    if (context == Context::FUNCTION) {
+        std::any symbol_return;
+        bool terminate = false;
+        for (auto statement: ctx->statement()) {
+            auto temp = visitStatement(statement);
+            if (statement->returnStatement() != nullptr) {
+                symbol_return = temp;
+                terminate = true;
+            }
+
+            if (terminate) {
+                std::println("Error: Unreachable code '{}'.", statement->getText().c_str());
+                error_count++;
+            }
+
+        }
+
+        return symbol_return;
+    }
     return visitChildren(ctx);
 }
 
@@ -52,23 +86,25 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
     auto name = ctx->Identifier()->getText();
     auto exists = table.lookup(name).second;
     if (exists) {
-        std::printf("Variable '%s' was already declared.\n", name.c_str());
+        std::println("Error: '{}' was already defined in this scope.", name.c_str());
+        error_count++;
     }
 
     Symbol new_symbol = {.name = name, .type = SymbolType::VARIABLE };
 
     if (ctx->typeAnnotation() != nullptr) {
-        auto symbol_type = std::any_cast<Symbol>(visitTypeAnnotation(ctx->typeAnnotation()));
+        auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
         new_symbol.data_type = symbol_type.data_type;
         // new_symbol.type = symbol_type.type;
     }
 
     if (ctx->initializer() != nullptr) {
-        auto initiallizer = std::any_cast<Symbol>(visitInitializer(ctx->initializer()));
+        auto initiallizer = castSymbol(visitInitializer(ctx->initializer()));
         if (new_symbol.data_type != SymbolDataType::UNDEFINED && new_symbol.data_type != initiallizer.data_type) {
-            std::printf("Variable '%s' not compatible with variable '%s'.\n", 
+            std::println("Error: Variable '{}' not compatible with value of type '{}'.", 
                          getSymbolDataTypeString(new_symbol.data_type).c_str(),
                          getSymbolDataTypeString(initiallizer.data_type).c_str());
+            error_count++;
         }
 
         new_symbol.value = initiallizer.value;
@@ -77,10 +113,38 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
     
     table.insert(new_symbol);
 
-    return visitChildren(ctx);
+    return std::any();
 }
 
 std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDeclarationContext *ctx) {
+
+    auto name = ctx->Identifier()->getText();
+    auto exists = table.lookup(name).second;
+    if (exists) {
+        std::println("Error: '{}' was already defined in this scope.", name.c_str());
+        error_count++;
+    }
+
+    Symbol new_symbol = {.name = name, .type = SymbolType::CONSTANT };
+
+    if (ctx->typeAnnotation() != nullptr) {
+        auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
+        new_symbol.data_type = symbol_type.data_type;
+        // new_symbol.type = symbol_type.type;
+    }
+
+    auto expression = castSymbol(visitExpression(ctx->expression()));
+    if (new_symbol.data_type != SymbolDataType::UNDEFINED && new_symbol.data_type != expression.data_type) {
+        std::println("Error: Constant '{}' not compatible with variable '{}'", 
+                     getSymbolDataTypeString(new_symbol.data_type).c_str(),
+                     getSymbolDataTypeString(expression.data_type).c_str());
+        error_count++;
+    }
+
+    new_symbol.value = expression.value;
+    new_symbol.data_type = expression.data_type;
+    
+    table.insert(new_symbol);
     return visitChildren(ctx);
 }
 
@@ -93,7 +157,28 @@ std::any SemanticChecker::visitInitializer(CompiScriptParser::InitializerContext
 }
 
 std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *ctx) {
-    return visitChildren(ctx);
+    if (ctx->expression().size() > 1) {
+    // TODO
+    }
+    
+    auto name = ctx->Identifier()->getText();
+    auto symbol_exists = table.lookup(name);
+    if (!symbol_exists.second) {
+        std::println("Error: Symbol '{}' isn't defined.", name.c_str());
+        error_count++;
+    }
+
+    Symbol symbol = symbol_exists.first;
+    Symbol expr = castSymbol(visitExpression(ctx->expression().at(0)));
+    if (symbol.data_type != expr.data_type) {
+        std::println("Error: Type mismatch on assigment");
+        error_count++;
+    }
+
+    symbol.value = expr.value;
+    table.update(name, symbol);
+
+    return makeAny(symbol);
 }
 
 std::any SemanticChecker::visitExpressionStatement(CompiScriptParser::ExpressionStatementContext *ctx) {
@@ -153,7 +238,47 @@ std::any SemanticChecker::visitDefaultCase(CompiScriptParser::DefaultCaseContext
 }
 
 std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDeclarationContext *ctx) {
-    return visitChildren(ctx);
+    auto name = ctx->Identifier()->getText();
+    auto exists = table.lookup(name).second;
+    if (exists) {
+        std::println("Error: '{}' was already defined in this scope.", name.c_str());
+        error_count++;
+    }
+
+    Symbol new_symbol = {.name = name, .type = SymbolType::FUNCTION };
+    if (ctx->parameters() != nullptr) {
+        auto symbol_args = castSymbol(visitParameters(ctx->parameters()));
+        new_symbol.arg_list = symbol_args.arg_list;
+    }
+
+    if (ctx->type() != nullptr) {
+        auto symbol_type = castSymbol(visitType(ctx->type()));
+        new_symbol.data_type = symbol_type.data_type;
+        if (symbol_type.dimentions > 0) {
+            new_symbol.size = symbol_type.size;
+            new_symbol.dimentions = symbol_type.dimentions;
+        }
+    } else {
+        new_symbol.data_type = SymbolDataType::NIL;
+    }
+
+    table.enter(new_symbol.arg_list);
+    // TODO: Check for nested functions
+    context = (Context)(context | Context::FUNCTION);
+    auto symbol_return = castSymbol(visitBlock(ctx->block()));
+    table.exit();
+    context = (Context)(context & ~Context::FUNCTION);
+
+    if (symbol_return.data_type != new_symbol.data_type &&
+        symbol_return.size != new_symbol.size &&
+        symbol_return.dimentions != new_symbol.dimentions)
+    {
+        std::println("Error: Invalid return type.");
+        error_count++;
+    }
+
+    table.insert(new_symbol);
+    return std::any();
 }
 
 std::any SemanticChecker::visitParameters(CompiScriptParser::ParametersContext *ctx) {
@@ -189,38 +314,152 @@ std::any SemanticChecker::visitExprNoAssign(CompiScriptParser::ExprNoAssignConte
 }
 
 std::any SemanticChecker::visitTernaryExpr(CompiScriptParser::TernaryExprContext *ctx) {
+    if (ctx->expression().size() > 0) {
+        auto condition = castSymbol(visitLogicalOrExpr(ctx->logicalOrExpr()));
+            if (condition.data_type != SymbolDataType::BOOLEAN) {
+                std::println("Error: '{}' is not a boolean type", condition.value.c_str());
+            }
+        // Type inference later?
+        auto symbol_1 = castSymbol(visitExpression(ctx->expression().at(0)));
+        auto symbol_2 = castSymbol(visitExpression(ctx->expression().at(1)));
+        if (symbol_1.data_type != symbol_2.data_type) {
+            std::println("Error: Both expressions in ternary operator must be the same type.");
+            error_count++;
+        }
+        symbol_1.value = "";
+        return makeAny(symbol_1);
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitLogicalOrExpr(CompiScriptParser::LogicalOrExprContext *ctx) {
+    if (ctx->logicalAndExpr().size() > 1) {
+        Symbol symbol;
+        for (auto operand: ctx->logicalAndExpr()) { 
+            symbol = castSymbol(visitLogicalAndExpr(operand));
+            if (symbol.data_type != SymbolDataType::BOOLEAN) {
+                std::println("Error in '{}': '{}' is not a boolean type", ctx->getText().c_str(), symbol.value.c_str());
+                error_count++;
+            }
+        }
+        symbol.value = "";
+        return makeAny(symbol);
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitLogicalAndExpr(CompiScriptParser::LogicalAndExprContext *ctx) {
+    if (ctx->equalityExpr().size() > 1) {
+        Symbol symbol;
+        for (auto operand: ctx->equalityExpr()) { 
+            symbol = castSymbol(visitEqualityExpr(operand));
+            if (symbol.data_type != SymbolDataType::BOOLEAN) {
+                std::println("Error: '{}' is not a boolean type", symbol.value.c_str());
+                error_count++;
+            }
+        }
+        symbol.value = "";
+        return makeAny(symbol);
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitEqualityExpr(CompiScriptParser::EqualityExprContext *ctx) {
+    if (ctx->relationalExpr().size() > 1) {
+        auto symbol = castSymbol(visitRelationalExpr(ctx->relationalExpr().at(0)));
+
+        Symbol next_symbol;
+        for (int i = 1; i < ctx->relationalExpr().size(); i++) { 
+            auto operand = ctx->relationalExpr().at(i);
+            std::println("");
+            if (symbol.data_type != next_symbol.data_type) {
+                std::println("Error: Equality between different types.");
+                error_count++;
+            }
+        }
+        symbol.value = "";
+        symbol.data_type = SymbolDataType::BOOLEAN;
+        return makeAny(symbol);
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitRelationalExpr(CompiScriptParser::RelationalExprContext *ctx) {
+    if (ctx->additiveExpr().size() > 1) {
+        Symbol symbol;
+        for (auto operand: ctx->additiveExpr()) { 
+            symbol = castSymbol(visitAdditiveExpr(operand));
+            if (symbol.data_type != SymbolDataType::INTEGER) {
+                std::println("Error: '{}' is not an integer type", symbol.value.c_str());
+                error_count++;
+            }
+        }
+        symbol.value = "";
+        symbol.data_type = SymbolDataType::BOOLEAN;
+        return makeAny(symbol);
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitAdditiveExpr(CompiScriptParser::AdditiveExprContext *ctx) {
+    if (ctx->multiplicativeExpr().size() > 1) {
+        Symbol symbol;
+        for (auto operand: ctx->multiplicativeExpr()) { 
+            symbol = castSymbol(visitMultiplicativeExpr(operand));
+            if (symbol.data_type != SymbolDataType::INTEGER) {
+                std::println("Error: '{}' is not an integer type", symbol.value.c_str());
+                error_count++;
+            }
+        }
+        symbol.value = "";
+        return makeAny(symbol);
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitMultiplicativeExpr(CompiScriptParser::MultiplicativeExprContext *ctx) {
+    if (ctx->unaryExpr().size() > 1) {
+        Symbol symbol;
+        for (auto operand: ctx->unaryExpr()) { 
+            symbol = castSymbol(visitUnaryExpr(operand));
+            if (symbol.data_type != SymbolDataType::INTEGER) {
+                std::println("Error: '{}' is not an integer type", symbol.value.c_str());
+                error_count++;
+            }
+        }
+        symbol.value = "";
+        return makeAny(symbol);
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitUnaryExpr(CompiScriptParser::UnaryExprContext *ctx) {
+    if (ctx->unaryExpr() != nullptr) {
+        auto unary = ctx->unaryExpr();
+        auto op = ctx->getStart()->getText();
+        auto symbol = castSymbol(visitUnaryExpr(unary));
+
+        if (op == "!") {
+            if (symbol.data_type != SymbolDataType::BOOLEAN) {
+                std::println("Error: '{}' is not a boolean type", symbol.value.c_str());
+                error_count++;
+            } 
+        } else {
+            if (symbol.data_type != SymbolDataType::INTEGER) {
+                std::println("Error: '{}' is not an integer type", symbol.value.c_str());
+                error_count++;
+            }
+        }
+
+        symbol.value = "";
+        return makeAny(symbol);
+    }
+
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitPrimaryExpr(CompiScriptParser::PrimaryExprContext *ctx) {
+    if (ctx->expression() != nullptr) return visitExpression(ctx->expression());
     return visitChildren(ctx);
 }
 
@@ -231,6 +470,7 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
     }
 
     new_symbol.value = ctx->getText();
+    new_symbol.type = SymbolType::LITERAL;
     if (ctx->Literal() != nullptr) {
         auto literal = ctx->Literal()->getSymbol();
         if (std::regex_match(literal->getText(), std::regex("[0-9]+"))) 
@@ -247,7 +487,7 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
         new_symbol.value = "";
     }
 
-    return std::make_any<Symbol>(new_symbol);
+    return makeAny(new_symbol);
 }
 
 std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *ctx) {
@@ -255,7 +495,13 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
 }
 
 std::any SemanticChecker::visitIdentifierExpr(CompiScriptParser::IdentifierExprContext *ctx) {
-    return visitChildren(ctx);
+    auto name = ctx->Identifier()->getText();
+    auto symbol_exists = table.lookup(name);
+    if (!symbol_exists.second) {
+        std::println("Error: '{}' is not defined", name.c_str());
+        error_count++;
+    }
+    return makeAny(symbol_exists.first);
 }
 
 std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
@@ -287,13 +533,14 @@ std::any SemanticChecker::visitArrayLiteral(CompiScriptParser::ArrayLiteralConte
 }
 
 std::any SemanticChecker::visitType(CompiScriptParser::TypeContext *ctx) {
-    auto symbol_type = std::any_cast<Symbol>(visitBaseType(ctx->baseType()));
+    auto symbol_type = castSymbol(visitBaseType(ctx->baseType()));
     // TODO: Check if it is an array
-    return std::make_any<Symbol>(symbol_type);
+    return makeAny(symbol_type);
 }
 
 std::any SemanticChecker::visitBaseType(CompiScriptParser::BaseTypeContext *ctx) {
     Symbol symbol_type;
     symbol_type.data_type = getSymbolDataType(ctx->getText());
-    return std::make_any<Symbol>(symbol_type);
+    // TODO: Check objects
+    return makeAny(symbol_type);
 }

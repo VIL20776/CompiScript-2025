@@ -7,7 +7,8 @@
 
 SymbolTable::SymbolTable()
 {
-    current = std::make_shared<Table>();
+    global = std::make_shared<Table>();
+    current = global;
 }
 
 SymbolTable::~SymbolTable()
@@ -15,7 +16,7 @@ SymbolTable::~SymbolTable()
 }
 
 void SymbolTable::insert(const Symbol &symbol) {
-    current->table.emplace(symbol.name, symbol);
+    current.lock()->table.emplace(symbol.name, symbol);
 }
 
 // std::vector<Symbol>
@@ -36,17 +37,17 @@ std::pair<const Symbol&, bool>
 SymbolTable::lookup(const std::string &symbol_name) {
     // Try finding in current scope;
 
-    if (!current) {
+    if (!current.lock()) {
         std::println("current is null");
     }
 
-    auto exists = current->table.contains(symbol_name);
-    if (current->table.contains(symbol_name))
-        return {current->table.at(symbol_name), true};
+    auto exists = current.lock()->table.contains(symbol_name);
+    if (current.lock()->table.contains(symbol_name))
+        return {current.lock()->table.at(symbol_name), true};
 
 
     // Find in previous scope
-    auto parent = current->parent.lock();
+    auto parent = current.lock()->parent.lock();
     while (parent) {
         if (parent->table.contains(symbol_name))
             return {parent->table.at(symbol_name), true};
@@ -60,13 +61,13 @@ SymbolTable::lookup(const std::string &symbol_name) {
 
 bool SymbolTable::update(const std::string &symbol_name, const Symbol &symbol) {
     // Try finding in current scope
-    if (current->table.contains(symbol_name)) {
-        current->table.insert_or_assign(symbol_name, symbol);
+    if (current.lock()->table.contains(symbol_name)) {
+        current.lock()->table.insert_or_assign(symbol_name, symbol);
         return true;
     }
 
     // Find in previous scope
-    auto parent = current->parent.lock();
+    auto parent = current.lock()->parent.lock();
     while (parent) {
         if (parent->table.contains(symbol_name))
             return true;
@@ -83,10 +84,10 @@ void SymbolTable::enter(const std::vector<Symbol> &initial_symbols) {
     for (auto symbol: initial_symbols) 
         new_scope->table.insert_or_assign(symbol.name, symbol);
 
-    current->children.push_back(new_scope);
-    current = new_scope;
+    current.lock()->children.push_back(new_scope);
+    current.lock() = new_scope;
 }
 
 void SymbolTable::exit() {
-    current = current->parent.lock();
+    current.lock() = current.lock()->parent.lock();
 }

@@ -8,8 +8,17 @@ namespace CompiScript {
 class SemanticChecker: public CompiScriptBaseVisitor
 {
 private:
+    enum Context: char {
+        NORMAL = 0,
+        FUNCTION = 1,
+        CLASS = 1 << 1,
+        FOR = 1 << 2,
+        WHILE = 1 << 3,
+    };
 
     SymbolTable table;
+    Context context;
+    int error_count;
 
 public:
     SemanticChecker();
