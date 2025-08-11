@@ -63,17 +63,16 @@ std::any SemanticChecker::visitBlock(CompiScriptParser::BlockContext *ctx) {
         std::any symbol_return;
         bool terminate = false;
         for (auto statement: ctx->statement()) {
+            if (terminate) {
+                std::println("Error: Unreachable code '{}'.", statement->getText().c_str());
+                error_count++; continue;
+            }
+
             auto temp = visitStatement(statement);
             if (statement->returnStatement() != nullptr) {
                 symbol_return = temp;
                 terminate = true;
             }
-
-            if (terminate) {
-                std::println("Error: Unreachable code '{}'.", statement->getText().c_str());
-                error_count++;
-            }
-
         }
 
         return symbol_return;
@@ -218,7 +217,11 @@ std::any SemanticChecker::visitContinueStatement(CompiScriptParser::ContinueStat
 }
 
 std::any SemanticChecker::visitReturnStatement(CompiScriptParser::ReturnStatementContext *ctx) {
-    return visitChildren(ctx);
+    if (ctx->expression() != nullptr)
+        return visitExpression(ctx->expression());
+
+    Symbol nil_return = {.data_type = SymbolDataType::NIL};
+    return nil_return;
 }
 
 std::any SemanticChecker::visitTryCatchStatement(CompiScriptParser::TryCatchStatementContext *ctx) {
@@ -247,8 +250,8 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
 
     Symbol new_symbol = {.name = name, .type = SymbolType::FUNCTION };
     if (ctx->parameters() != nullptr) {
-        auto symbol_args = castSymbol(visitParameters(ctx->parameters()));
-        new_symbol.arg_list = symbol_args.arg_list;
+        auto symbol_params = castSymbol(visitParameters(ctx->parameters()));
+        new_symbol.arg_list = symbol_params.arg_list;
     }
 
     if (ctx->type() != nullptr) {
@@ -263,11 +266,16 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
     }
 
     table.enter(new_symbol.arg_list);
-    // TODO: Check for nested functions
+
+    bool flag_set = (context & Context::FUNCTION) ? true: false;
     context = (Context)(context | Context::FUNCTION);
+
     auto symbol_return = castSymbol(visitBlock(ctx->block()));
+    new_symbol.definition = table.getCurrent();
+
     table.exit();
-    context = (Context)(context & ~Context::FUNCTION);
+    if (!flag_set)
+        context = (Context)(context & ~Context::FUNCTION);
 
     if (symbol_return.data_type != new_symbol.data_type &&
         symbol_return.size != new_symbol.size &&
@@ -282,11 +290,22 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
 }
 
 std::any SemanticChecker::visitParameters(CompiScriptParser::ParametersContext *ctx) {
-    return visitChildren(ctx);
+    Symbol symbol_params;
+    for (auto param: ctx->parameter()) {
+        symbol_params.arg_list.push_back(castSymbol(visitParameter(param)));
+    }
+
+    return makeAny(symbol_params);
 }
 
 std::any SemanticChecker::visitParameter(CompiScriptParser::ParameterContext *ctx) {
-    return visitChildren(ctx);
+    auto name = ctx->Identifier()->getText();
+    Symbol new_symbol = {.name = name, .type = SymbolType::ARGUMENT};
+    if (ctx->type() != nullptr) {
+        auto symbol_type = castSymbol(visitType(ctx->type()));
+        new_symbol.data_type = symbol_type.data_type;
+    }
+    return makeAny(new_symbol);
 }
 
 std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarationContext *ctx) {
@@ -403,12 +422,14 @@ std::any SemanticChecker::visitRelationalExpr(CompiScriptParser::RelationalExprC
 
 std::any SemanticChecker::visitAdditiveExpr(CompiScriptParser::AdditiveExprContext *ctx) {
     if (ctx->multiplicativeExpr().size() > 1) {
-        Symbol symbol;
-        for (auto operand: ctx->multiplicativeExpr()) { 
-            symbol = castSymbol(visitMultiplicativeExpr(operand));
-            if (symbol.data_type != SymbolDataType::INTEGER) {
-                std::println("Error: '{}' is not an integer type", symbol.value.c_str());
-                error_count++;
+        auto symbol = castSymbol(visitMultiplicativeExpr(ctx->multiplicativeExpr().at(0)));
+        if (!ctx->SUB().empty() || symbol.data_type != SymbolDataType::STRING) {
+            for (auto operand: ctx->multiplicativeExpr()) { 
+                symbol = castSymbol(visitMultiplicativeExpr(operand));
+                if (symbol.data_type != SymbolDataType::INTEGER) {
+                    std::println("Error: '{}' is not an integer type", symbol.value.c_str());
+                    error_count++;
+                }
             }
         }
         symbol.value = "";
@@ -460,7 +481,8 @@ std::any SemanticChecker::visitUnaryExpr(CompiScriptParser::UnaryExprContext *ct
 
 std::any SemanticChecker::visitPrimaryExpr(CompiScriptParser::PrimaryExprContext *ctx) {
     if (ctx->expression() != nullptr) return visitExpression(ctx->expression());
-    return visitChildren(ctx);
+    if (ctx->leftHandSide() != nullptr) return visitLeftHandSide(ctx->leftHandSide());
+    return visitLiteralExpr(ctx->literalExpr());
 }
 
 std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext *ctx) {
@@ -491,7 +513,35 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
 }
 
 std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *ctx) {
-    return visitChildren(ctx);
+    auto atom = castSymbol(visit(ctx->primaryAtom()));
+    if (atom.type == SymbolType::FUNCTION) {
+        if (ctx->suffixOp().empty()) {
+            std::println("Error: Incomplete function call.");
+            error_count++;
+        }
+
+        auto suffix = castSymbol(visit(ctx->suffixOp().at(0)));
+        if (suffix.arg_list.size() != atom.arg_list.size()) {
+            std::println("Error: Expected {} arguments, recieved {}.",
+                         atom.arg_list.size(),
+                         suffix.arg_list.size());
+            error_count++;
+        }
+
+        int limit = atom.arg_list.size();
+        for (int i = 0; i < limit; i++) {
+            auto expected = atom.arg_list.at(i).data_type;
+            auto received = suffix.arg_list.at(i).data_type;
+            if (expected != received) {
+                std::println("Error: Expected argument of type '{}', recieved '{}'.",
+                             getSymbolDataTypeString(expected),
+                             getSymbolDataTypeString(received));
+                error_count++;
+            }
+        }
+        // TODO: Manage access to arrays
+    }
+    return makeAny(atom);
 }
 
 std::any SemanticChecker::visitIdentifierExpr(CompiScriptParser::IdentifierExprContext *ctx) {
@@ -513,7 +563,10 @@ std::any SemanticChecker::visitThisExpr(CompiScriptParser::ThisExprContext *ctx)
 }
 
 std::any SemanticChecker::visitCallExpr(CompiScriptParser::CallExprContext *ctx) {
-    return visitChildren(ctx);
+    if (ctx->arguments() == nullptr)
+        return Symbol();
+
+    return visitArguments(ctx->arguments());
 }
 
 std::any SemanticChecker::visitIndexExpr(CompiScriptParser::IndexExprContext *ctx) {
@@ -525,7 +578,11 @@ std::any SemanticChecker::visitPropertyAccessExpr(CompiScriptParser::PropertyAcc
 }
 
 std::any SemanticChecker::visitArguments(CompiScriptParser::ArgumentsContext *ctx) {
-    return visitChildren(ctx);
+    Symbol symbol_arguments;
+    for (auto expr: ctx->expression()) {
+        symbol_arguments.arg_list.push_back(castSymbol(visitExpression(expr)));
+    }
+    return makeAny(symbol_arguments);
 }
 
 std::any SemanticChecker::visitArrayLiteral(CompiScriptParser::ArrayLiteralContext *ctx) {

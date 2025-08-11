@@ -84,8 +84,9 @@ void SymbolTable::enter(const std::vector<Symbol> &initial_symbols) {
     for (auto symbol: initial_symbols) 
         new_scope->table.insert_or_assign(symbol.name, symbol);
 
+    new_scope->parent = current;
     current.lock()->children.push_back(new_scope);
-    current.lock() = new_scope;
+    current = new_scope;
 }
 
 void SymbolTable::exit() {

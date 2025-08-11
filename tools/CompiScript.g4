@@ -103,7 +103,7 @@ relationalExpr
   ;
 
 additiveExpr
-  : multiplicativeExpr ( ('+' | '-') multiplicativeExpr )*
+  : multiplicativeExpr ( op=(ADD | SUB) multiplicativeExpr )*
   ;
 
 multiplicativeExpr
@@ -169,6 +169,9 @@ IntegerLiteral: [0-9]+;
 StringLiteral: '"' (~["\r\n])* '"';
 
 Identifier: [a-zA-Z_][a-zA-Z0-9_]*;
+
+ADD: '+';
+SUB: '-';
 
 WS: [ \t\r\n]+ -> skip;
 COMMENT: '//' ~[\r\n]* -> skip;

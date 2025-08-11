@@ -80,4 +80,5 @@ public:
     void enter(const std::vector<Symbol> &initial_symbols = {});
     void exit();
 
+    std::weak_ptr<Table> getCurrent() {return current;}
 };

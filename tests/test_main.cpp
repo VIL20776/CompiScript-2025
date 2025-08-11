@@ -83,7 +83,7 @@ let z = (1 + 2) * 3;
     }
 }
 
-TEST_CASE("Constant", "[Operations]") {
+TEST_CASE("Constants", "[Constants]") {
     SemanticChecker checker {};
     test_stream(R"(
 const KiB: integer = 1024;
@@ -95,4 +95,42 @@ const KiB: integer = 1024;
         auto kib = table.lookup("KiB").first;
         REQUIRE(kib.data_type == SymbolDataType::INTEGER);
     }
+}
+
+TEST_CASE("Functions", "[Functions]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+function saludar(nombre: string): string {
+  return "Hola " + nombre;
+}
+let mensaje = saludar("Mundo");
+
+function crearContador(): integer {
+  function siguiente(): integer {
+    return 1;
+  }
+  return siguiente();
+}
+                )", &checker);
+
+    auto table = checker.getSymbolTable();
+
+    SECTION("Checking function declaration") {
+        auto saludar = table.lookup("saludar").first;
+        REQUIRE(table.lookup("saludar").second);
+        REQUIRE(saludar.type == SymbolType::FUNCTION);
+        REQUIRE(saludar.data_type == SymbolDataType::STRING);
+    }
+
+    SECTION("Checking function call") {
+        auto mensaje = table.lookup("mensaje").first;
+        REQUIRE(table.lookup("mensaje").second);
+        REQUIRE(mensaje.data_type == SymbolDataType::STRING);
+    }
+
+    SECTION("Checking function closure") {
+        auto contador = table.lookup("crearContador").first;
+        REQUIRE(table.lookup("crearContador").second);
+        REQUIRE(contador.definition.lock()->table.contains("siguiente"));
+    } 
 }
