@@ -34,7 +34,7 @@ void SymbolTable::insert(const Symbol &symbol) {
 // }
 
 std::pair<const Symbol&, bool>
-SymbolTable::lookup(const std::string &symbol_name) {
+SymbolTable::lookup(const std::string &symbol_name, bool local) {
     // Try finding in current scope;
 
     if (!current.lock()) {
@@ -47,14 +47,15 @@ SymbolTable::lookup(const std::string &symbol_name) {
 
 
     // Find in previous scope
-    auto parent = current.lock()->parent.lock();
-    while (parent) {
-        if (parent->table.contains(symbol_name))
-            return {parent->table.at(symbol_name), true};
+    if (!local) {
+        auto parent = current.lock()->parent.lock();
+        while (parent) {
+            if (parent->table.contains(symbol_name))
+                return {parent->table.at(symbol_name), true};
 
-        parent = parent->parent.lock();
+            parent = parent->parent.lock();
+        } 
     }
-    
     return {{}, false};
 }
 
@@ -84,11 +85,11 @@ void SymbolTable::enter(const std::vector<Symbol> &initial_symbols) {
     for (auto symbol: initial_symbols) 
         new_scope->table.insert_or_assign(symbol.name, symbol);
 
-    new_scope->parent = current;
     current.lock()->children.push_back(new_scope);
+    new_scope->parent = current.lock();
     current = new_scope;
 }
 
 void SymbolTable::exit() {
-    current.lock() = current.lock()->parent.lock();
+    current = current.lock()->parent.lock();
 }

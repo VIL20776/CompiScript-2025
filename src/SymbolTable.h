@@ -73,7 +73,7 @@ public:
 
     void insert(const Symbol &symbol);
 
-    std::pair<const Symbol&, bool> lookup(const std::string &symbol_name);
+    std::pair<const Symbol&, bool> lookup(const std::string &symbol_name, bool local = true);
 
     bool update(const std::string &symbol_name, const Symbol &symbol);
 
