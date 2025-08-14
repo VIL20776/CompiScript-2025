@@ -11,7 +11,7 @@ enum class SymbolType: int {
     CONSTANT,
     ARGUMENT,
     FUNCTION,
-    CLOUSURE,
+    PROPERTY,
     CLASS,
 };
 
@@ -49,9 +49,9 @@ struct Symbol {
     std::string value;
     std::vector<Symbol> arg_list;
     std::weak_ptr<Table> definition;
-    int size;
-    int dimentions;
-    int offset;
+    int size = 0;
+    int dimentions = 0;
+    int offset = 0;
 };
 
 struct Table { 

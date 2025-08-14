@@ -134,3 +134,44 @@ function crearContador(): integer {
         REQUIRE(contador.definition.lock()->table.contains("siguiente"));
     } 
 }
+
+TEST_CASE("Arrays", "[Arrays]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+let notas: integer[] = [90, 85, 100];
+let lista = [1, 2, 3];
+let matriz: integer[][] = [[1, 2], [3, 4]];
+
+let nota = notas[0];
+                )", &checker);
+
+    auto table = checker.getSymbolTable();
+
+    SECTION("Checking array declaration") {
+        auto notas = table.lookup("notas").first;
+        REQUIRE(table.lookup("notas").second);
+        REQUIRE(notas.data_type == SymbolDataType::INTEGER);
+        REQUIRE(notas.size == 96);
+        REQUIRE(notas.dimentions == 1);
+
+        auto lista = table.lookup("lista").first;
+        REQUIRE(table.lookup("lista").second);
+        REQUIRE(lista.data_type == SymbolDataType::INTEGER);
+        REQUIRE(lista.size == 96);
+        REQUIRE(lista.dimentions == 1);
+
+        auto matriz = table.lookup("matriz").first;
+        REQUIRE(table.lookup("matriz").second);
+        REQUIRE(matriz.data_type == SymbolDataType::INTEGER);
+        REQUIRE(matriz.size == 128);
+        REQUIRE(matriz.dimentions == 2);
+    }
+
+    SECTION("Checking array access") {
+        auto nota = table.lookup("nota").first;
+        REQUIRE(table.lookup("nota").second);
+        REQUIRE(nota.data_type == SymbolDataType::INTEGER);
+        REQUIRE(nota.dimentions == 0);
+    }
+
+}

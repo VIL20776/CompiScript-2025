@@ -94,12 +94,14 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
     if (ctx->typeAnnotation() != nullptr) {
         auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
         new_symbol.data_type = symbol_type.data_type;
-        // new_symbol.type = symbol_type.type;
+        new_symbol.dimentions = symbol_type.dimentions;
     }
 
     if (ctx->initializer() != nullptr) {
         auto initiallizer = castSymbol(visitInitializer(ctx->initializer()));
-        if (new_symbol.data_type != SymbolDataType::UNDEFINED && new_symbol.data_type != initiallizer.data_type) {
+        if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
+            (new_symbol.data_type != initiallizer.data_type || new_symbol.dimentions != initiallizer.dimentions)
+        ) {
             std::println("Error: Variable '{}' not compatible with value of type '{}'.", 
                          getSymbolDataTypeString(new_symbol.data_type).c_str(),
                          getSymbolDataTypeString(initiallizer.data_type).c_str());
@@ -108,6 +110,8 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
 
         new_symbol.value = initiallizer.value;
         new_symbol.data_type = initiallizer.data_type;
+        new_symbol.dimentions = initiallizer.dimentions;
+        new_symbol.size = initiallizer.size;
     }
     
     table.insert(new_symbol);
@@ -129,11 +133,13 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
     if (ctx->typeAnnotation() != nullptr) {
         auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
         new_symbol.data_type = symbol_type.data_type;
-        // new_symbol.type = symbol_type.type;
+        new_symbol.dimentions = symbol_type.dimentions;
     }
 
     auto expression = castSymbol(visitExpression(ctx->expression()));
-    if (new_symbol.data_type != SymbolDataType::UNDEFINED && new_symbol.data_type != expression.data_type) {
+    if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
+        (new_symbol.data_type != expression.data_type || new_symbol.dimentions != expression.dimentions)
+    ) {
         std::println("Error: Constant '{}' not compatible with variable '{}'", 
                      getSymbolDataTypeString(new_symbol.data_type).c_str(),
                      getSymbolDataTypeString(expression.data_type).c_str());
@@ -142,6 +148,8 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
 
     new_symbol.value = expression.value;
     new_symbol.data_type = expression.data_type;
+    new_symbol.dimentions = expression.dimentions;
+    new_symbol.size = expression.size;
     
     table.insert(new_symbol);
     return visitChildren(ctx);
@@ -161,7 +169,7 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
     }
     
     auto name = ctx->Identifier()->getText();
-    auto symbol_exists = table.lookup(name);
+    auto symbol_exists = table.lookup(name, false);
     if (!symbol_exists.second) {
         std::println("Error: Symbol '{}' isn't defined.", name.c_str());
         error_count++;
@@ -169,7 +177,7 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
 
     Symbol symbol = symbol_exists.first;
     Symbol expr = castSymbol(visitExpression(ctx->expression().at(0)));
-    if (symbol.data_type != expr.data_type) {
+    if (symbol.data_type != expr.data_type && symbol.dimentions != expr.dimentions) {
         std::println("Error: Type mismatch on assigment");
         error_count++;
     }
@@ -486,13 +494,13 @@ std::any SemanticChecker::visitPrimaryExpr(CompiScriptParser::PrimaryExprContext
 }
 
 std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext *ctx) {
+    if (ctx->arrayLiteral() != nullptr)
+        return makeAny(castSymbol(visitArrayLiteral(ctx->arrayLiteral())));
+    
     Symbol new_symbol;
-    if (ctx->arrayLiteral() != nullptr) {
-        // TODO
-    }
-
     new_symbol.value = ctx->getText();
     new_symbol.type = SymbolType::LITERAL;
+    new_symbol.size = 32;
     if (ctx->Literal() != nullptr) {
         auto literal = ctx->Literal()->getSymbol();
         if (std::regex_match(literal->getText(), std::regex("[0-9]+"))) 
@@ -514,39 +522,51 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
 
 std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *ctx) {
     auto atom = castSymbol(visit(ctx->primaryAtom()));
-    if (atom.type == SymbolType::FUNCTION) {
-        if (ctx->suffixOp().empty()) {
-            std::println("Error: Incomplete function call.");
-            error_count++;
-        }
+    
+    if (atom.type == SymbolType::FUNCTION && ctx->suffixOp().empty()) {
+        std::println("Error: Incomplete function call.");
+        error_count++;
+    }
 
-        auto suffix = castSymbol(visit(ctx->suffixOp().at(0)));
-        if (suffix.arg_list.size() != atom.arg_list.size()) {
-            std::println("Error: Expected {} arguments, recieved {}.",
-                         atom.arg_list.size(),
-                         suffix.arg_list.size());
-            error_count++;
-        }
-
-        int limit = atom.arg_list.size();
-        for (int i = 0; i < limit; i++) {
-            auto expected = atom.arg_list.at(i).data_type;
-            auto received = suffix.arg_list.at(i).data_type;
-            if (expected != received) {
-                std::println("Error: Expected argument of type '{}', recieved '{}'.",
-                             getSymbolDataTypeString(expected),
-                             getSymbolDataTypeString(received));
+    for (auto suffixOp: ctx->suffixOp()) {
+        // TODO: Check other Suffixes
+        auto suffix = castSymbol(visit(suffixOp));
+        if (atom.type == SymbolType::FUNCTION && suffix.type == SymbolType::ARGUMENT) {
+            if (suffix.arg_list.size() != atom.arg_list.size()) {
+                std::println("Error: Expected {} arguments, recieved {}.",
+                             atom.arg_list.size(),
+                             suffix.arg_list.size());
                 error_count++;
             }
+
+            int limit = atom.arg_list.size();
+            for (int i = 0; i < limit; i++) {
+                auto expected = atom.arg_list.at(i).data_type;
+                auto received = suffix.arg_list.at(i).data_type;
+                if (expected != received) {
+                    std::println("Error: Expected argument of type '{}', recieved '{}'.",
+                                 getSymbolDataTypeString(expected),
+                                 getSymbolDataTypeString(received));
+                    error_count++;
+                }
+            }
         }
-        // TODO: Manage access to arrays
+
+        if (atom.dimentions > 0 && suffix.data_type == SymbolDataType::INTEGER) {
+            atom.dimentions--;
+        }
+
+        if (!atom.label.empty() && suffix.type == SymbolType::PROPERTY) {
+            // TODO
+        }
     }
+
     return makeAny(atom);
 }
 
 std::any SemanticChecker::visitIdentifierExpr(CompiScriptParser::IdentifierExprContext *ctx) {
     auto name = ctx->Identifier()->getText();
-    auto symbol_exists = table.lookup(name);
+    auto symbol_exists = table.lookup(name, false);
     if (!symbol_exists.second) {
         std::println("Error: '{}' is not defined", name.c_str());
         error_count++;
@@ -564,13 +584,21 @@ std::any SemanticChecker::visitThisExpr(CompiScriptParser::ThisExprContext *ctx)
 
 std::any SemanticChecker::visitCallExpr(CompiScriptParser::CallExprContext *ctx) {
     if (ctx->arguments() == nullptr)
-        return Symbol();
+        return Symbol({.type = SymbolType::ARGUMENT});
 
     return visitArguments(ctx->arguments());
 }
 
 std::any SemanticChecker::visitIndexExpr(CompiScriptParser::IndexExprContext *ctx) {
-    return visitChildren(ctx);
+    Symbol array_index = castSymbol(visitExpression(ctx->expression()));
+    if (array_index.data_type != SymbolDataType::INTEGER)
+    {
+        std::println("Error: Invalid index value.");
+        array_index.data_type = SymbolDataType::INTEGER;
+        array_index.value = "0";
+        error_count++;
+    }
+    return array_index;
 }
 
 std::any SemanticChecker::visitPropertyAccessExpr(CompiScriptParser::PropertyAccessExprContext *ctx) {
@@ -578,7 +606,7 @@ std::any SemanticChecker::visitPropertyAccessExpr(CompiScriptParser::PropertyAcc
 }
 
 std::any SemanticChecker::visitArguments(CompiScriptParser::ArgumentsContext *ctx) {
-    Symbol symbol_arguments;
+    Symbol symbol_arguments = {.type = SymbolType::ARGUMENT};
     for (auto expr: ctx->expression()) {
         symbol_arguments.arg_list.push_back(castSymbol(visitExpression(expr)));
     }
@@ -586,12 +614,38 @@ std::any SemanticChecker::visitArguments(CompiScriptParser::ArgumentsContext *ct
 }
 
 std::any SemanticChecker::visitArrayLiteral(CompiScriptParser::ArrayLiteralContext *ctx) {
-    return visitChildren(ctx);
+    Symbol array_symbol = {.data_type = SymbolDataType::UNDEFINED};
+    // TODO: let id = [] case
+    if (!ctx->expression().empty()) {
+        auto value_symbol = castSymbol(visitExpression(ctx->expression().at(0)));
+        array_symbol.data_type = value_symbol.data_type;
+        array_symbol.dimentions = value_symbol.dimentions;
+    }
+
+    for (auto expr: ctx->expression()) {
+        auto value_symbol = castSymbol(visitExpression(expr));
+        if (value_symbol.data_type != array_symbol.data_type && 
+            (value_symbol.size != array_symbol.size || value_symbol.dimentions != array_symbol.dimentions)
+        ) {
+            std::println("Error: Non matching data types in array literal");
+            error_count++;
+        }
+
+        array_symbol.value.append(value_symbol.value + ';');
+        array_symbol.size += value_symbol.size; 
+    }
+
+    array_symbol.dimentions++;
+    return makeAny(array_symbol);
 }
 
 std::any SemanticChecker::visitType(CompiScriptParser::TypeContext *ctx) {
     auto symbol_type = castSymbol(visitBaseType(ctx->baseType()));
-    // TODO: Check if it is an array
+    auto token_string = ctx->getText();
+    while (token_string.ends_with("[]")) {
+        token_string.erase(token_string.length() - 2);
+        symbol_type.dimentions++;
+    }
     return makeAny(symbol_type);
 }
 
