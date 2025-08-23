@@ -50,7 +50,7 @@ std::any SemanticChecker::visitProgram(CompiScriptParser::ProgramContext *ctx) {
 
 std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ctx) {
     if (ctx->returnStatement() != nullptr)  {
-        if (context != Context::FUNCTION)
+        if (!(context & Context::FUNCTION))
             std::println("Error: Invalid 'return' outside function.");
         else
             return visitReturnStatement(ctx->returnStatement());
@@ -59,7 +59,7 @@ std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ct
 }
 
 std::any SemanticChecker::visitBlock(CompiScriptParser::BlockContext *ctx) {
-    if (context == Context::FUNCTION) {
+    if (context & Context::FUNCTION) {
         std::any symbol_return;
         bool terminate = false;
         for (auto statement: ctx->statement()) {
@@ -74,6 +74,9 @@ std::any SemanticChecker::visitBlock(CompiScriptParser::BlockContext *ctx) {
                 terminate = true;
             }
         }
+
+        if (!symbol_return.has_value()) 
+            symbol_return = makeAny({.data_type = SymbolDataType::NIL});
 
         return symbol_return;
     }
@@ -152,7 +155,8 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
     new_symbol.size = expression.size;
     
     table.insert(new_symbol);
-    return visitChildren(ctx);
+
+    return std::any();
 }
 
 std::any SemanticChecker::visitTypeAnnotation(CompiScriptParser::TypeAnnotationContext *ctx) {
@@ -163,12 +167,34 @@ std::any SemanticChecker::visitInitializer(CompiScriptParser::InitializerContext
     return visitChildren(ctx);
 }
 
-std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *ctx) {
-    if (ctx->expression().size() > 1) {
-    // TODO
-    }
-    
+std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *ctx) { 
     auto name = ctx->Identifier()->getText();
+    if (ctx->expression().size() > 1) {
+        auto symbol = castSymbol(visitExpression(ctx->expression().at(0)));
+
+        if (symbol.data_type != SymbolDataType::OBJECT) {
+            std::println("Error: Symbol {} is not of type object.", symbol.name.c_str());
+            error_count++;
+        }
+
+        auto symbol_exists = table.get_property(symbol.name, name);
+        if (!symbol_exists.second) {
+            std::println("Error: Property '{}' isn't defined.", name.c_str());
+            error_count++;
+        }
+
+        auto prop_symbol = symbol_exists.first;
+        auto expr = castSymbol(visitExpression(ctx->expression().at(1)));
+        if (prop_symbol.data_type != expr.data_type && prop_symbol.dimentions != expr.dimentions) {
+            std::println("Error: Type mismatch on assigment");
+            error_count++;
+        }
+
+        prop_symbol.value = expr.value;
+        table.set_property(symbol.name, name, prop_symbol);
+        return makeAny(symbol);
+    }
+
     auto symbol_exists = table.lookup(name, false);
     if (!symbol_exists.second) {
         std::println("Error: Symbol '{}' isn't defined.", name.c_str());
@@ -266,11 +292,10 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
         auto symbol_type = castSymbol(visitType(ctx->type()));
         new_symbol.data_type = symbol_type.data_type;
         if (symbol_type.dimentions > 0) {
-            new_symbol.size = symbol_type.size;
             new_symbol.dimentions = symbol_type.dimentions;
         }
     } else {
-        new_symbol.data_type = SymbolDataType::NIL;
+        new_symbol.data_type = SymbolDataType::UNDEFINED;
     }
 
     table.enter(new_symbol.arg_list);
@@ -285,9 +310,9 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
     if (!flag_set)
         context = (Context)(context & ~Context::FUNCTION);
 
-    if (symbol_return.data_type != new_symbol.data_type &&
-        symbol_return.size != new_symbol.size &&
-        symbol_return.dimentions != new_symbol.dimentions)
+    if (new_symbol.data_type != SymbolDataType::UNDEFINED && (
+        symbol_return.data_type != new_symbol.data_type ||
+        symbol_return.dimentions != new_symbol.dimentions))
     {
         std::println("Error: Invalid return type.");
         error_count++;
@@ -317,7 +342,52 @@ std::any SemanticChecker::visitParameter(CompiScriptParser::ParameterContext *ct
 }
 
 std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarationContext *ctx) {
-    return visitChildren(ctx);
+    auto name = ctx->Identifier().at(0)->getText();
+    auto exists = table.lookup(name).second;
+    if (exists) {
+        std::println("Error: '{}' was already defined in this scope.", name.c_str());
+        error_count++;
+    }
+
+    Symbol new_symbol = {.name = name, .type = SymbolType::CLASS };
+    if (ctx->Identifier().size() > 1) {
+        auto label = ctx->Identifier().at(1)->getText();
+        auto symbol_exists = table.lookup(label, false);
+        if (!symbol_exists.second) {
+            std::println("Error: parent class '{}' does not exist.", name.c_str());
+            error_count++;
+        }
+        new_symbol.label = label;
+        new_symbol.arg_list = symbol_exists.first.arg_list;
+    }
+
+    table.enter();
+
+    context = (Context)(context | Context::CLASS);
+
+    Symbol symbol_self = {
+        .name = "this", 
+        .label = name,
+        .type = SymbolType::VARIABLE, 
+        .data_type = SymbolDataType::OBJECT, 
+        .definition = table.getCurrent()
+    };
+    table.insert(symbol_self);
+
+    for (auto member: ctx->classMember())
+        visitClassMember(member);
+
+    new_symbol.definition = table.getCurrent();
+    if (table.lookup("constructor").second) {
+        auto constructor = table.lookup("constructor").first;
+        new_symbol.arg_list = constructor.arg_list;
+    }
+    table.exit();
+
+    context = (Context)(context & ~Context::CLASS);
+
+    table.insert(new_symbol);
+    return std::any();
 }
 
 std::any SemanticChecker::visitClassMember(CompiScriptParser::ClassMemberContext *ctx) {
@@ -333,7 +403,31 @@ std::any SemanticChecker::visitAssignExpr(CompiScriptParser::AssignExprContext *
 }
 
 std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAssignExprContext *ctx) {
-    return visitChildren(ctx);
+    auto prop_name = ctx->Identifier()->getText();
+    auto symbol = castSymbol(visitLeftHandSide(ctx->lhs));
+
+    if (symbol.data_type != SymbolDataType::OBJECT) {
+        std::println("Error: Symbol {} is not of type object.", symbol.name.c_str());
+        error_count++;
+    }
+    
+    auto symbol_exists = table.get_property(symbol.name, prop_name);
+    if (!symbol_exists.second) {
+        std::println("Error: Property '{}' isn't defined.", prop_name.c_str());
+        error_count++;
+    }
+
+    auto prop_symbol = symbol_exists.first;
+    auto expr = castSymbol(visit(ctx->assignmentExpr()));
+    if (prop_symbol.data_type != expr.data_type && prop_symbol.dimentions != expr.dimentions) {
+        std::println("Error: Type mismatch on assigment");
+        error_count++;
+    }
+
+    prop_symbol.value = expr.value;
+    table.set_property(symbol.name, prop_name, prop_symbol);
+    
+    return makeAny(prop_symbol);
 }
 
 std::any SemanticChecker::visitExprNoAssign(CompiScriptParser::ExprNoAssignContext *ctx) {
@@ -557,7 +651,12 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
         }
 
         if (!atom.label.empty() && suffix.type == SymbolType::PROPERTY) {
-            // TODO
+            auto prop_exists = table.get_property(atom.name, suffix.name);
+            if (!prop_exists.second) {
+                std::println("Error: Property doesn't exist.");
+                error_count++;
+            }
+            atom = prop_exists.first;
         }
     }
 
@@ -579,7 +678,12 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
 }
 
 std::any SemanticChecker::visitThisExpr(CompiScriptParser::ThisExprContext *ctx) {
-    return visitChildren(ctx);
+    auto symbol_exists = table.lookup("this", false);
+    if (!symbol_exists.second) {
+        std::println("Error: Invalid use of reserved word 'this'");
+        error_count++;
+    }
+    return makeAny(symbol_exists.first);
 }
 
 std::any SemanticChecker::visitCallExpr(CompiScriptParser::CallExprContext *ctx) {
@@ -602,7 +706,9 @@ std::any SemanticChecker::visitIndexExpr(CompiScriptParser::IndexExprContext *ct
 }
 
 std::any SemanticChecker::visitPropertyAccessExpr(CompiScriptParser::PropertyAccessExprContext *ctx) {
-    return visitChildren(ctx);
+    auto name = ctx->Identifier()->getText();
+    Symbol symbol_prop = {.name = name, .type = SymbolType::PROPERTY};
+    return makeAny(symbol_prop);
 }
 
 std::any SemanticChecker::visitArguments(CompiScriptParser::ArgumentsContext *ctx) {

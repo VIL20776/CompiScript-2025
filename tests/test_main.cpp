@@ -175,3 +175,27 @@ let nota = notas[0];
     }
 
 }
+
+TEST_CASE("Class tests", "[Classes]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+class Animal {
+  let nombre: string;
+
+  function constructor(nombre: string) {
+    this.nombre = nombre;
+  }
+
+  function hablar(): string {
+    return this.nombre + " hace ruido.";
+  }
+}
+                )", &checker);
+
+    auto table = checker.getSymbolTable();
+    SECTION("Class declaration") {
+        auto animal = table.lookup("Animal").first;
+        REQUIRE(table.lookup("Animal").second);
+        REQUIRE(!animal.arg_list.empty());
+    }
+}

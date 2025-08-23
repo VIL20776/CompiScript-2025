@@ -1,9 +1,9 @@
 #pragma once
 
+#include <unordered_map>
 #include <string>
 #include <vector>
 #include <memory>
-#include <unordered_map>
 
 enum class SymbolType: int {
     LITERAL,
@@ -74,6 +74,10 @@ public:
     void insert(const Symbol &symbol);
 
     std::pair<const Symbol&, bool> lookup(const std::string &symbol_name, bool local = true);
+
+    std::pair<const Symbol&, bool> get_property(const std::string &symbol_name, const std::string &property_name);
+
+    bool set_property(const std::string &symbol_name, const std::string &property_name, const Symbol &symbol);
 
     bool update(const std::string &symbol_name, const Symbol &symbol);
 

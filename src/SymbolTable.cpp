@@ -1,5 +1,4 @@
 #include <utility>
-#include <unordered_map>
 #include <memory>
 #include <print>
 
@@ -59,6 +58,39 @@ SymbolTable::lookup(const std::string &symbol_name, bool local) {
     return {{}, false};
 }
 
+std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symbol_name, const std::string &property_name) {
+    auto symbol_exists = lookup(symbol_name, false);
+    if (!symbol_exists.second) 
+        return symbol_exists;
+
+    auto symbol = symbol_exists.first;
+    if (!symbol.definition.lock())
+        return {{}, false};
+
+    auto class_table = symbol.definition.lock();
+    if (class_table->table.contains(property_name))
+        return {class_table->table.at(property_name), true};
+
+    return {{}, false};
+}
+
+bool SymbolTable::set_property(const std::string &symbol_name, const std::string &property_name, const Symbol &property_symbol) {
+    auto symbol_exists = lookup(symbol_name, false);
+    if (!symbol_exists.second) 
+        return false;
+
+    auto symbol = symbol_exists.first;
+    if (!symbol.definition.lock())
+        return false;
+
+    auto class_table = symbol.definition.lock();
+    if (class_table->table.contains(property_name)) {
+        class_table->table.insert_or_assign(property_name, property_symbol);
+        return true;
+    }
+
+    return false;
+}
 
 bool SymbolTable::update(const std::string &symbol_name, const Symbol &symbol) {
     // Try finding in current scope
@@ -70,14 +102,15 @@ bool SymbolTable::update(const std::string &symbol_name, const Symbol &symbol) {
     // Find in previous scope
     auto parent = current.lock()->parent.lock();
     while (parent) {
-        if (parent->table.contains(symbol_name))
+        if (parent->table.contains(symbol_name)) {
+            parent->table.insert_or_assign(symbol_name, symbol);
             return true;
+        }
 
         parent = parent->parent.lock();
     }
     
     return false;
-    
 }
 
 void SymbolTable::enter(const std::vector<Symbol> &initial_symbols) {
