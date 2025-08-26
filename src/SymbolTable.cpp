@@ -58,24 +58,32 @@ SymbolTable::lookup(const std::string &symbol_name, bool local) {
     return {{}, false};
 }
 
-std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symbol_name, const std::string &property_name) {
-    auto symbol_exists = lookup(symbol_name, false);
-    if (!symbol_exists.second) 
-        return symbol_exists;
+std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symbol_label, const std::string &property_name) {
+    std::string label = symbol_label;
+    do {
+        auto symbol_exists = lookup(label, false);
+        if (!symbol_exists.second) 
+            return symbol_exists;
 
-    auto symbol = symbol_exists.first;
-    if (!symbol.definition.lock())
-        return {{}, false};
+        auto symbol = symbol_exists.first;
+        if (!symbol.definition.lock() || symbol.type != SymbolType::CLASS)
+            return {{}, false};
 
-    auto class_table = symbol.definition.lock();
-    if (class_table->table.contains(property_name))
-        return {class_table->table.at(property_name), true};
+        auto class_table = symbol.definition.lock();
+        if (class_table->table.contains(property_name))
+            return {class_table->table.at(property_name), true};
+
+        label = symbol.label;
+    }
+    while (!label.empty());
+        
 
     return {{}, false};
 }
 
-bool SymbolTable::set_property(const std::string &symbol_name, const std::string &property_name, const Symbol &property_symbol) {
-    auto symbol_exists = lookup(symbol_name, false);
+bool SymbolTable::set_property(const std::string &symbol_label, const std::string &property_name, const Symbol &property_symbol) {
+    // TODO: Rework on CI phase
+    auto symbol_exists = lookup(symbol_label, false);
     if (!symbol_exists.second) 
         return false;
 

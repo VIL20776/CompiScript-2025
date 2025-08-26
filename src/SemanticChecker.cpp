@@ -96,6 +96,7 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
 
     if (ctx->typeAnnotation() != nullptr) {
         auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
+        new_symbol.label = symbol_type.label;
         new_symbol.data_type = symbol_type.data_type;
         new_symbol.dimentions = symbol_type.dimentions;
     }
@@ -103,14 +104,24 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
     if (ctx->initializer() != nullptr) {
         auto initiallizer = castSymbol(visitInitializer(ctx->initializer()));
         if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
-            (new_symbol.data_type != initiallizer.data_type || new_symbol.dimentions != initiallizer.dimentions)
+            (new_symbol.data_type != initiallizer.data_type || 
+            new_symbol.dimentions != initiallizer.dimentions ||
+            new_symbol.label != initiallizer.label)
         ) {
-            std::println("Error: Variable '{}' not compatible with value of type '{}'.", 
-                         getSymbolDataTypeString(new_symbol.data_type).c_str(),
-                         getSymbolDataTypeString(initiallizer.data_type).c_str());
+            if (new_symbol.data_type != SymbolDataType::OBJECT) {
+                std::println("Error: Variable '{}' not compatible with value of type '{}'.", 
+                             getSymbolDataTypeString(new_symbol.data_type).c_str(),
+                             getSymbolDataTypeString(initiallizer.data_type).c_str());
+            } else {
+                std::println("Error: Variable '{}' not compatible with value of type '{}'.", 
+                             new_symbol.label.c_str(),
+                             initiallizer.label.c_str());
+
+            }
             error_count++;
         }
 
+        new_symbol.label = initiallizer.label;
         new_symbol.value = initiallizer.value;
         new_symbol.data_type = initiallizer.data_type;
         new_symbol.dimentions = initiallizer.dimentions;
@@ -141,14 +152,13 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
 
     auto expression = castSymbol(visitExpression(ctx->expression()));
     if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
-        (new_symbol.data_type != expression.data_type || new_symbol.dimentions != expression.dimentions)
+        (new_symbol.data_type != expression.data_type || 
+        new_symbol.dimentions != expression.dimentions ||
+        new_symbol.label != expression.label)
     ) {
-        std::println("Error: Constant '{}' not compatible with variable '{}'", 
-                     getSymbolDataTypeString(new_symbol.data_type).c_str(),
-                     getSymbolDataTypeString(expression.data_type).c_str());
-        error_count++;
     }
 
+    new_symbol.label = expression.label;
     new_symbol.value = expression.value;
     new_symbol.data_type = expression.data_type;
     new_symbol.dimentions = expression.dimentions;
@@ -177,7 +187,7 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
             error_count++;
         }
 
-        auto symbol_exists = table.get_property(symbol.name, name);
+        auto symbol_exists = table.get_property(symbol.label, name);
         if (!symbol_exists.second) {
             std::println("Error: Property '{}' isn't defined.", name.c_str());
             error_count++;
@@ -190,8 +200,8 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
             error_count++;
         }
 
-        prop_symbol.value = expr.value;
-        table.set_property(symbol.name, name, prop_symbol);
+        // prop_symbol.value = expr.value;
+        // table.set_property(symbol.label, name, prop_symbol);
         return makeAny(symbol);
     }
 
@@ -306,9 +316,9 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
     auto symbol_return = castSymbol(visitBlock(ctx->block()));
     new_symbol.definition = table.getCurrent();
 
-    table.exit();
     if (!flag_set)
         context = (Context)(context & ~Context::FUNCTION);
+    table.exit();
 
     if (new_symbol.data_type != SymbolDataType::UNDEFINED && (
         symbol_return.data_type != new_symbol.data_type ||
@@ -361,32 +371,34 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
         new_symbol.arg_list = symbol_exists.first.arg_list;
     }
 
-    table.enter();
+    table.insert(new_symbol);
 
+    table.enter();
     context = (Context)(context | Context::CLASS);
+
+    new_symbol.definition = table.getCurrent();
+    table.update(name, new_symbol);
 
     Symbol symbol_self = {
         .name = "this", 
         .label = name,
         .type = SymbolType::VARIABLE, 
         .data_type = SymbolDataType::OBJECT, 
-        .definition = table.getCurrent()
     };
     table.insert(symbol_self);
 
     for (auto member: ctx->classMember())
         visitClassMember(member);
 
-    new_symbol.definition = table.getCurrent();
     if (table.lookup("constructor").second) {
         auto constructor = table.lookup("constructor").first;
         new_symbol.arg_list = constructor.arg_list;
+        table.update(name, new_symbol);
     }
-    table.exit();
 
     context = (Context)(context & ~Context::CLASS);
+    table.exit();
 
-    table.insert(new_symbol);
     return std::any();
 }
 
@@ -411,7 +423,7 @@ std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAss
         error_count++;
     }
     
-    auto symbol_exists = table.get_property(symbol.name, prop_name);
+    auto symbol_exists = table.get_property(symbol.label, prop_name);
     if (!symbol_exists.second) {
         std::println("Error: Property '{}' isn't defined.", prop_name.c_str());
         error_count++;
@@ -424,8 +436,8 @@ std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAss
         error_count++;
     }
 
-    prop_symbol.value = expr.value;
-    table.set_property(symbol.name, prop_name, prop_symbol);
+    // prop_symbol.value = expr.value;
+    // table.set_property(symbol.label, prop_name, prop_symbol);
     
     return makeAny(prop_symbol);
 }
@@ -651,7 +663,7 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
         }
 
         if (!atom.label.empty() && suffix.type == SymbolType::PROPERTY) {
-            auto prop_exists = table.get_property(atom.name, suffix.name);
+            auto prop_exists = table.get_property(atom.label, suffix.name);
             if (!prop_exists.second) {
                 std::println("Error: Property doesn't exist.");
                 error_count++;
@@ -674,7 +686,45 @@ std::any SemanticChecker::visitIdentifierExpr(CompiScriptParser::IdentifierExprC
 }
 
 std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
-    return visitChildren(ctx);
+    auto name = ctx->Identifier()->getText();
+    auto symbol_exists = table.lookup(name, false);
+    if (!symbol_exists.second) {
+        std::println("Error: '{}' is not defined", name.c_str());
+        error_count++;
+    }
+
+    auto class_symbol = symbol_exists.first;
+    if (class_symbol.type != SymbolType::CLASS) {
+        std::println("Error: '{}' is not a class", name.c_str());
+        error_count++;
+    }
+
+    auto args_symbol = castSymbol(visitArguments(ctx->arguments()));
+    if (class_symbol.arg_list.size() != args_symbol.arg_list.size()) {
+        std::println("Error: Expected {} arguments, recieved {}.",
+                     class_symbol.arg_list.size(),
+                     args_symbol.arg_list.size());
+        error_count++;
+    }
+
+    int limit = class_symbol.arg_list.size();
+    for (int i = 0; i < limit; i++) {
+        auto expected = class_symbol.arg_list.at(i).data_type;
+        auto received = args_symbol.arg_list.at(i).data_type;
+        if (expected != received) {
+            std::println("Error: Expected argument of type '{}', recieved '{}'.",
+                         getSymbolDataTypeString(expected),
+                         getSymbolDataTypeString(received));
+            error_count++;
+        }
+    }        
+
+    auto new_symbol = Symbol{
+        .name = name,
+        .label = class_symbol.name,
+        .data_type = SymbolDataType::OBJECT,
+    };
+    return makeAny(new_symbol);
 }
 
 std::any SemanticChecker::visitThisExpr(CompiScriptParser::ThisExprContext *ctx) {
@@ -758,6 +808,20 @@ std::any SemanticChecker::visitType(CompiScriptParser::TypeContext *ctx) {
 std::any SemanticChecker::visitBaseType(CompiScriptParser::BaseTypeContext *ctx) {
     Symbol symbol_type;
     symbol_type.data_type = getSymbolDataType(ctx->getText());
-    // TODO: Check objects
+    if (symbol_type.data_type == SymbolDataType::OBJECT) { 
+        auto symbol_exists = table.lookup(ctx->getText(), false);
+        if (!symbol_exists.second) {
+            std::println("Error: '{}' is not defined", ctx->getText().c_str());
+            error_count++;
+        }
+
+        auto class_symbol = symbol_exists.first;
+        if (class_symbol.type != SymbolType::CLASS) {
+            std::println("Error: '{}' is not a class", ctx->getText().c_str());
+            error_count++;
+        }
+
+        symbol_type.label = class_symbol.name;
+    }
     return makeAny(symbol_type);
 }

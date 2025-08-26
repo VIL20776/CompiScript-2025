@@ -190,6 +190,16 @@ class Animal {
     return this.nombre + " hace ruido.";
   }
 }
+
+let animal: Animal = new Animal("Toby");
+
+class Perro : Animal {
+  function hablar(): string {
+    return this.nombre + " ladra.";
+  }
+}
+
+let perro: Perro = new Perro("Firulais");
                 )", &checker);
 
     auto table = checker.getSymbolTable();
@@ -197,5 +207,26 @@ class Animal {
         auto animal = table.lookup("Animal").first;
         REQUIRE(table.lookup("Animal").second);
         REQUIRE(!animal.arg_list.empty());
+    }
+
+    SECTION("Class declaration with inheritance") {
+        auto perro = table.lookup("Perro").first;
+        REQUIRE(table.lookup("Perro").second);
+        REQUIRE(perro.label == "Animal");
+        REQUIRE(!perro.arg_list.empty());
+    }
+
+    SECTION("Object declaration") {
+        auto animal = table.lookup("animal").first;
+        REQUIRE(table.lookup("animal").second);
+        REQUIRE(animal.label == "Animal");
+        REQUIRE(table.get_property(animal.label, "nombre").second);
+
+        auto perro = table.lookup("perro").first;
+        REQUIRE(table.lookup("perro").second);
+        REQUIRE(perro.label == "Perro");
+        REQUIRE(table.get_property(perro.label, "hablar").second);
+        REQUIRE(table.get_property(perro.label, "nombre").second);
+
     }
 }
