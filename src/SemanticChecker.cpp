@@ -49,11 +49,39 @@ std::any SemanticChecker::visitProgram(CompiScriptParser::ProgramContext *ctx) {
 }
 
 std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ctx) {
-    if (ctx->returnStatement() != nullptr)  {
-        if (!(context & Context::FUNCTION))
+    if (ctx->returnStatement() != nullptr) {
+        if (!(context & Context::FUNCTION)) {
             std::println("Error: Invalid 'return' outside function.");
-        else
+            error_count++;
+        }
+        else {
             return visitReturnStatement(ctx->returnStatement());
+        }
+    }
+    if (ctx->breakStatement() != nullptr) {
+        if (!(context & Context::WHILE)) {
+            std::println("Error: Invalid 'break' outside while block.");
+            error_count++;
+        }
+        if (!(context & Context::FOR)) {
+            std::println("Error: Invalid 'break' outside for block.");
+            error_count++;
+        }
+    }
+    if (ctx->continueStatement() != nullptr) {
+        if (!(context & Context::WHILE)) {
+            std::println("Error: Invalid 'continue' outside while block.");
+            error_count++;
+        }
+        if (!(context & Context::FOR)) {
+            std::println("Error: Invalid 'continue' outside for block.");
+            error_count++;
+        }
+    }
+    if (ctx->block() != nullptr) {
+        table.enter();
+        visitBlock(ctx->block());
+        table.exit();
     }
     return visitChildren(ctx);
 }
@@ -233,23 +261,99 @@ std::any SemanticChecker::visitPrintStatement(CompiScriptParser::PrintStatementC
 }
 
 std::any SemanticChecker::visitIfStatement(CompiScriptParser::IfStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto condition = castSymbol(visitExpression(ctx->expression()));
+    if (condition.data_type != SymbolDataType::BOOLEAN) {
+        std::println("Error: '{}' is not a boolean type", condition.value.c_str());
+        error_count++;
+    }
+
+    for (auto block :ctx->block()) {
+        table.enter();
+        visitBlock(block);
+        table.exit();
+    }
+
+    // TODO: Check function cases
+
+    return std::any();
 }
 
 std::any SemanticChecker::visitWhileStatement(CompiScriptParser::WhileStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto condition = castSymbol(visitExpression(ctx->expression()));
+    if (condition.data_type != SymbolDataType::BOOLEAN) {
+        std::println("Error: '{}' is not a boolean type", condition.value.c_str());
+        error_count++;
+    }
+
+    bool flag_set = (context & Context::WHILE) ? true: false;
+    context = (Context)(context | Context::WHILE);
+
+    table.enter();
+    visitBlock(ctx->block());
+    table.exit();
+
+    if (!flag_set)
+        context = (Context)(context & ~Context::WHILE);
+
+    // TODO: Check function cases
+
+    return std::any();
 }
 
 std::any SemanticChecker::visitDoWhileStatement(CompiScriptParser::DoWhileStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto condition = castSymbol(visitExpression(ctx->expression()));
+    if (condition.data_type != SymbolDataType::BOOLEAN) {
+        std::println("Error: '{}' is not a boolean type", condition.value.c_str());
+        error_count++;
+    }
+
+    bool flag_set = (context & Context::WHILE) ? true: false;
+    context = (Context)(context | Context::WHILE);
+
+    table.enter();
+    visitBlock(ctx->block());
+    table.exit();
+
+    if (!flag_set)
+        context = (Context)(context & ~Context::WHILE);
+    
+    // TODO: Check function cases
+
+    return std::any();
 }
 
 std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementContext *ctx) {
-    return visitChildren(ctx);
+    // TODO: Manage expressions
+    bool flag_set = (context & Context::FOR) ? true: false;
+    context = (Context)(context | Context::FOR);
+
+    table.enter();
+    visitBlock(ctx->block());
+    table.exit();
+
+    if (!flag_set)
+        context = (Context)(context & ~Context::FOR);
+
+    // TODO: Check function cases
+    
+    return std::any();
 }
 
 std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatementContext *ctx) {
-    return visitChildren(ctx);
+    // TODO: Manage expressions
+    bool flag_set = (context & Context::FOR) ? true: false;
+    context = (Context)(context | Context::FOR);
+
+    table.enter();
+    visitBlock(ctx->block());
+    table.exit();
+
+    if (!flag_set)
+        context = (Context)(context & ~Context::FOR);
+
+    // TODO: Check function cases
+
+    return std::any();
 }
 
 std::any SemanticChecker::visitBreakStatement(CompiScriptParser::BreakStatementContext *ctx) {
@@ -273,15 +377,49 @@ std::any SemanticChecker::visitTryCatchStatement(CompiScriptParser::TryCatchStat
 }
 
 std::any SemanticChecker::visitSwitchStatement(CompiScriptParser::SwitchStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto condition = castSymbol(ctx->expression());
+    if (condition.data_type == SymbolDataType::OBJECT) {
+        std::println("Error: Can't switch a type 'OBJECT' expresion.");
+        error_count++; 
+    }
+    for (auto s_case: ctx->switchCase()) {
+        auto case_symbol = castSymbol(visitSwitchCase(s_case));
+        if (case_symbol.data_type != condition.data_type) {
+            std::println("Error: Case of type {} doesn't match condition of type {}.",
+                                 getSymbolDataTypeString(case_symbol.data_type),
+                                 getSymbolDataTypeString(condition.data_type));
+            error_count++;
+        }
+    }
+
+    return std::any();
 }
 
 std::any SemanticChecker::visitSwitchCase(CompiScriptParser::SwitchCaseContext *ctx) {
-    return visitChildren(ctx);
+    auto case_symbol = castSymbol(ctx->expression());
+    if (case_symbol.type != SymbolType::LITERAL) {
+        std::println("Error: Case expression must be of type 'LITERAL'.");
+        error_count++;
+    }
+
+    table.enter();
+
+    // TODO: Check function cases
+    for (auto statement: ctx->statement())
+        visitStatement(statement);
+
+    table.exit();
+    return makeAny(case_symbol);
 }
 
 std::any SemanticChecker::visitDefaultCase(CompiScriptParser::DefaultCaseContext *ctx) {
-    return visitChildren(ctx);
+    table.enter();
+
+    for (auto statement: ctx->statement())
+        visitStatement(statement);
+
+    table.exit();
+    return std::any();
 }
 
 std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDeclarationContext *ctx) {
@@ -308,6 +446,8 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
         new_symbol.data_type = SymbolDataType::UNDEFINED;
     }
 
+    table.insert(new_symbol);
+
     table.enter(new_symbol.arg_list);
 
     bool flag_set = (context & Context::FUNCTION) ? true: false;
@@ -315,6 +455,7 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
 
     auto symbol_return = castSymbol(visitBlock(ctx->block()));
     new_symbol.definition = table.getCurrent();
+    table.update(name, new_symbol);
 
     if (!flag_set)
         context = (Context)(context & ~Context::FUNCTION);
@@ -328,7 +469,6 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
         error_count++;
     }
 
-    table.insert(new_symbol);
     return std::any();
 }
 
@@ -449,9 +589,9 @@ std::any SemanticChecker::visitExprNoAssign(CompiScriptParser::ExprNoAssignConte
 std::any SemanticChecker::visitTernaryExpr(CompiScriptParser::TernaryExprContext *ctx) {
     if (ctx->expression().size() > 0) {
         auto condition = castSymbol(visitLogicalOrExpr(ctx->logicalOrExpr()));
-            if (condition.data_type != SymbolDataType::BOOLEAN) {
-                std::println("Error: '{}' is not a boolean type", condition.value.c_str());
-            }
+        if (condition.data_type != SymbolDataType::BOOLEAN) {
+            std::println("Error: '{}' is not a boolean type", condition.value.c_str());
+        }
         // Type inference later?
         auto symbol_1 = castSymbol(visitExpression(ctx->expression().at(0)));
         auto symbol_2 = castSymbol(visitExpression(ctx->expression().at(1)));

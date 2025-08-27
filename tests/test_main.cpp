@@ -230,3 +230,19 @@ let perro: Perro = new Perro("Firulais");
 
     }
 }
+
+TEST_CASE("Recursion", "[Functions]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+function factorial(n: integer): integer {
+  if (n <= 1) { return 1; }
+  return n * factorial(n - 1);
+}
+                )", &checker);
+
+    auto table = checker.getSymbolTable();
+    SECTION("Function declaration with recursion") {
+        REQUIRE(table.lookup("factorial").second);
+    }
+
+}
