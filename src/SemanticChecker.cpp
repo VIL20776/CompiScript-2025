@@ -39,7 +39,7 @@ std::string getSymbolDataTypeString(SymbolDataType type) {
     return string_type;
 }
 
-SemanticChecker::SemanticChecker(): table(), error_count(0), context(Context::NORMAL) {}
+SemanticChecker::SemanticChecker(): table(), error_count(0), context(Context::NORMAL), context_name("") {}
 SemanticChecker::~SemanticChecker() {}
 
 //SemanticChecker implementations
@@ -257,6 +257,15 @@ std::any SemanticChecker::visitExpressionStatement(CompiScriptParser::Expression
 }
 
 std::any SemanticChecker::visitPrintStatement(CompiScriptParser::PrintStatementContext *ctx) {
+    auto symbol = castSymbol(visitExpression(ctx->expression()));
+    if (symbol.data_type == SymbolDataType::OBJECT ||
+        symbol.data_type == SymbolDataType::NIL || 
+        symbol.data_type == SymbolDataType::UNDEFINED) 
+    {
+        std::println("Error: Can't print symbol of type '{}'.", 
+                     getSymbolDataTypeString(symbol.data_type).c_str());
+        error_count++;
+    }
     return visitChildren(ctx);
 }
 
@@ -365,15 +374,40 @@ std::any SemanticChecker::visitContinueStatement(CompiScriptParser::ContinueStat
 }
 
 std::any SemanticChecker::visitReturnStatement(CompiScriptParser::ReturnStatementContext *ctx) {
-    if (ctx->expression() != nullptr)
-        return visitExpression(ctx->expression());
+    if (ctx->expression() != nullptr) {
+        auto func_symbol = table.lookup(context_name, false).first;
+        auto symbol_return = castSymbol(visitExpression(ctx->expression()));
+
+        if (func_symbol.data_type != SymbolDataType::NIL && (
+            symbol_return.data_type != func_symbol.data_type ||
+            symbol_return.dimentions != func_symbol.dimentions))
+        {
+            std::println("Error: Invalid return type.");
+            error_count++;
+        }
+
+        return symbol_return;
+    }
 
     Symbol nil_return = {.data_type = SymbolDataType::NIL};
     return nil_return;
 }
 
 std::any SemanticChecker::visitTryCatchStatement(CompiScriptParser::TryCatchStatementContext *ctx) {
-    return visitChildren(ctx);
+    table.enter();
+    visitBlock(ctx->block().at(0));
+    table.exit();
+
+    Symbol error_symbol = {
+        .type = SymbolType::CONSTANT,
+        .data_type = SymbolDataType::STRING,
+    };
+
+    table.enter({error_symbol});
+    visitBlock(ctx->block().at(1));
+    table.exit();
+
+    return std::any();
 }
 
 std::any SemanticChecker::visitSwitchStatement(CompiScriptParser::SwitchStatementContext *ctx) {
@@ -443,17 +477,25 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
             new_symbol.dimentions = symbol_type.dimentions;
         }
     } else {
-        new_symbol.data_type = SymbolDataType::UNDEFINED;
+        new_symbol.data_type = SymbolDataType::NIL;
     }
 
     table.insert(new_symbol);
 
     table.enter(new_symbol.arg_list);
 
+    auto prev_context_name = context_name;
+    context_name = name;
+
     bool flag_set = (context & Context::FUNCTION) ? true: false;
     context = (Context)(context | Context::FUNCTION);
 
     auto symbol_return = castSymbol(visitBlock(ctx->block()));
+    if (symbol_return.data_type == SymbolDataType::NIL && new_symbol.data_type != SymbolDataType::NIL) {
+        std::println("Error: The function must return a value of type '{}'.", 
+                     getSymbolDataTypeString(new_symbol.data_type));
+        error_count++;
+    }
     new_symbol.definition = table.getCurrent();
     table.update(name, new_symbol);
 
@@ -461,13 +503,7 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
         context = (Context)(context & ~Context::FUNCTION);
     table.exit();
 
-    if (new_symbol.data_type != SymbolDataType::UNDEFINED && (
-        symbol_return.data_type != new_symbol.data_type ||
-        symbol_return.dimentions != new_symbol.dimentions))
-    {
-        std::println("Error: Invalid return type.");
-        error_count++;
-    }
+    context_name = prev_context_name;
 
     return std::any();
 }

@@ -17,7 +17,10 @@ private:
     };
 
     SymbolTable table;
+
+    std::string context_name;
     Context context;
+
     int error_count;
 
 public:
