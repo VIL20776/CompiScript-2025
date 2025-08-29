@@ -59,22 +59,14 @@ std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ct
         }
     }
     if (ctx->breakStatement() != nullptr) {
-        if (!(context & Context::WHILE)) {
-            std::println("Error: Invalid 'break' outside while block.");
-            error_count++;
-        }
-        if (!(context & Context::FOR)) {
-            std::println("Error: Invalid 'break' outside for block.");
+        if (!((context & Context::WHILE) || (context & Context::FOR))) {
+            std::println("Error: Invalid use of 'break' keyword.");
             error_count++;
         }
     }
     if (ctx->continueStatement() != nullptr) {
-        if (!(context & Context::WHILE)) {
-            std::println("Error: Invalid 'continue' outside while block.");
-            error_count++;
-        }
-        if (!(context & Context::FOR)) {
-            std::println("Error: Invalid 'continue' outside for block.");
+        if (!((context & Context::WHILE) || (context & Context::FOR))) {
+            std::println("Error: Invalid use of 'continue' keyword.");
             error_count++;
         }
     }
@@ -332,35 +324,59 @@ std::any SemanticChecker::visitDoWhileStatement(CompiScriptParser::DoWhileStatem
 }
 
 std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementContext *ctx) {
-    // TODO: Manage expressions
     bool flag_set = (context & Context::FOR) ? true: false;
     context = (Context)(context | Context::FOR);
+    if (ctx->assignment() != nullptr) 
+        visitAssignment(ctx->assignment());
 
     table.enter();
+    if (ctx->variableDeclaration() != nullptr)
+        visitVariableDeclaration(ctx->variableDeclaration());
+    
+    if (ctx->expression().at(0) != nullptr) {
+        auto condition = castSymbol(visitExpression(ctx->expression().at(0)));
+        if (condition.data_type != SymbolDataType::BOOLEAN) {
+            std::println("Error: '{}' is not a boolean type", condition.value.c_str());
+            error_count++;
+        }
+    }
+    
+    if (ctx->expression().at(1) != nullptr)
+        visitExpression(ctx->expression().at(1));
+
     visitBlock(ctx->block());
     table.exit();
 
     if (!flag_set)
         context = (Context)(context & ~Context::FOR);
 
-    // TODO: Check function cases
-    
     return std::any();
 }
 
 std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatementContext *ctx) {
-    // TODO: Manage expressions
+    auto iter_symbol = castSymbol(visitExpression(ctx->expression()));
+    if (iter_symbol.dimentions == 0) {
+            std::println("Error: For-each loop can't iterate over non array type.");
+            error_count++;
+    }
+
+    Symbol new_symbol = {
+        .name = ctx->Identifier()->getText(),
+        .label = iter_symbol.label,
+        .type = SymbolType::VARIABLE,
+        .data_type = iter_symbol.data_type,
+        .dimentions = iter_symbol.dimentions - 1,
+    };
+    
     bool flag_set = (context & Context::FOR) ? true: false;
     context = (Context)(context | Context::FOR);
 
-    table.enter();
+    table.enter({new_symbol});
     visitBlock(ctx->block());
     table.exit();
 
     if (!flag_set)
         context = (Context)(context & ~Context::FOR);
-
-    // TODO: Check function cases
 
     return std::any();
 }
@@ -411,7 +427,7 @@ std::any SemanticChecker::visitTryCatchStatement(CompiScriptParser::TryCatchStat
 }
 
 std::any SemanticChecker::visitSwitchStatement(CompiScriptParser::SwitchStatementContext *ctx) {
-    auto condition = castSymbol(ctx->expression());
+    auto condition = castSymbol(visitExpression(ctx->expression()));
     if (condition.data_type == SymbolDataType::OBJECT) {
         std::println("Error: Can't switch a type 'OBJECT' expresion.");
         error_count++; 
@@ -426,11 +442,14 @@ std::any SemanticChecker::visitSwitchStatement(CompiScriptParser::SwitchStatemen
         }
     }
 
+    if (ctx->defaultCase() != nullptr)
+        visitDefaultCase(ctx->defaultCase());
+
     return std::any();
 }
 
 std::any SemanticChecker::visitSwitchCase(CompiScriptParser::SwitchCaseContext *ctx) {
-    auto case_symbol = castSymbol(ctx->expression());
+    auto case_symbol = castSymbol(visitExpression(ctx->expression()));
     if (case_symbol.type != SymbolType::LITERAL) {
         std::println("Error: Case expression must be of type 'LITERAL'.");
         error_count++;
@@ -438,7 +457,6 @@ std::any SemanticChecker::visitSwitchCase(CompiScriptParser::SwitchCaseContext *
 
     table.enter();
 
-    // TODO: Check function cases
     for (auto statement: ctx->statement())
         visitStatement(statement);
 
@@ -679,8 +697,7 @@ std::any SemanticChecker::visitEqualityExpr(CompiScriptParser::EqualityExprConte
 
         Symbol next_symbol;
         for (int i = 1; i < ctx->relationalExpr().size(); i++) { 
-            auto operand = ctx->relationalExpr().at(i);
-            std::println("");
+            next_symbol = castSymbol(visitRelationalExpr(ctx->relationalExpr().at(i)));
             if (symbol.data_type != next_symbol.data_type) {
                 std::println("Error: Equality between different types.");
                 error_count++;

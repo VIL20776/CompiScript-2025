@@ -246,3 +246,69 @@ function factorial(n: integer): integer {
     }
 
 }
+
+TEST_CASE("Conditional control", "[Flow]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+
+let x = 4;
+if (x > 10) {
+  print("Mayor a 10");
+} else {
+  print("Menor o igual");
+}
+
+while (x < 5) {
+  x = x + 1;
+}
+
+do {
+  x = x - 1;
+} while (x > 0);
+                )", &checker);
+}
+
+TEST_CASE("For loops", "[Flow]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+for (let i: integer = 0; i < 3; i = i + 1) {
+  print(i);
+}
+
+let notas = [40, 60, 80, 100];
+foreach (n in notas) {
+  if (n < 60) { continue; }
+  if (n == 100) { break; }
+  print(n);
+}
+                )", &checker);
+}
+
+TEST_CASE("Switch case", "[Flow]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+let x = 2;
+switch (x) {
+  case 1:
+    print("uno");
+  case 2:
+    print("dos");
+  default:
+    print("otro");
+}
+                )", &checker);
+}
+
+TEST_CASE("Try-Catch", "[Errors]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+let lista = [1, 2, 3, 4];
+try {
+  let peligro = lista[100];
+} catch (err) {
+  print("Error atrapado: " + err);
+}
+                )", &checker);
+}
+
+
