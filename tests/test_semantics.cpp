@@ -2,19 +2,12 @@
 
 #include <print>
 
-#include "CompiScriptLexer.h"
-#include "CompiScriptParser.h"
 #include "SemanticChecker.h"
 #include "SymbolTable.h"
 
+#include "test.h"
+
 using namespace CompiScript;
-void test_stream(const std::string &stream, SemanticChecker *checker) {
-    auto input = antlr4::ANTLRInputStream(stream);
-    CompiScriptLexer lexer(&input);
-    antlr4::CommonTokenStream tokens(&lexer);
-    CompiScriptParser parser(&tokens);
-    checker->visitProgram(parser.program());
-}
 
 TEST_CASE("Variable testing", "[Data types]") {
     SemanticChecker checker {};
@@ -135,6 +128,22 @@ function crearContador(): integer {
     } 
 }
 
+TEST_CASE("Recursion", "[Functions]") {
+    SemanticChecker checker {};
+    test_stream(R"(
+function factorial(n: integer): integer {
+  if (n <= 1) { return 1; }
+  return n * factorial(n - 1);
+}
+                )", &checker);
+
+    auto table = checker.getSymbolTable();
+    SECTION("Function declaration with recursion") {
+        REQUIRE(table.lookup("factorial").second);
+    }
+
+}
+
 TEST_CASE("Arrays", "[Arrays]") {
     SemanticChecker checker {};
     test_stream(R"(
@@ -229,22 +238,6 @@ let perro: Perro = new Perro("Firulais");
         REQUIRE(table.get_property(perro.label, "nombre").second);
 
     }
-}
-
-TEST_CASE("Recursion", "[Functions]") {
-    SemanticChecker checker {};
-    test_stream(R"(
-function factorial(n: integer): integer {
-  if (n <= 1) { return 1; }
-  return n * factorial(n - 1);
-}
-                )", &checker);
-
-    auto table = checker.getSymbolTable();
-    SECTION("Function declaration with recursion") {
-        REQUIRE(table.lookup("factorial").second);
-    }
-
 }
 
 TEST_CASE("Conditional control", "[Flow]") {
