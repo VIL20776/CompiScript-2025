@@ -8,7 +8,7 @@ namespace CompiScript {
 class SemanticChecker: public CompiScriptBaseVisitor
 {
 private:
-    enum Context: char {
+    enum TableContext: char {
         NORMAL = 0,
         FUNCTION = 1,
         CLASS = 1 << 1,
@@ -19,9 +19,8 @@ private:
     SymbolTable table;
 
     std::string context_name;
-    Context context;
+    TableContext context;
 
-    int error_count;
 
 public:
     SemanticChecker();
