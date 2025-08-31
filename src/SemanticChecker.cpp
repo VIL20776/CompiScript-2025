@@ -52,7 +52,7 @@ std::any SemanticChecker::visitProgram(CompiScriptParser::ProgramContext *ctx) {
 std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ctx) {
     if (ctx->returnStatement() != nullptr) {
         if (!(context & TableContext::FUNCTION)) {
-            std::println(stderr, "Error: Invalid 'return' outside function.");
+            std::println(stderr, "Error in line {}: Invalid 'return' outside function.", ctx->getStart()->getLine());
             throw std::runtime_error("INVALID_KEYWORD_USE");
         }
         else {
@@ -61,14 +61,14 @@ std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ct
     }
     if (ctx->breakStatement() != nullptr) {
         if (!((context & TableContext::WHILE) || (context & TableContext::FOR))) {
-            std::println(stderr, "Error: Invalid use of 'break' keyword.");
+            std::println(stderr, "Error in line {}: Invalid use of 'break' keyword.", ctx->getStart()->getLine());
             throw std::runtime_error("INVALID_KEYWORD_USE");
             
         }
     }
     if (ctx->continueStatement() != nullptr) {
         if (!((context & TableContext::WHILE) || (context & TableContext::FOR))) {
-            std::println(stderr, "Error: Invalid use of 'continue' keyword.");
+            std::println(stderr, "Error in line {}: Invalid use of 'continue' keyword.", ctx->getStart()->getLine());
             throw std::runtime_error("INVALID_KEYWORD_USE");
             
         }
@@ -87,7 +87,9 @@ std::any SemanticChecker::visitBlock(CompiScriptParser::BlockContext *ctx) {
         bool terminate = false;
         for (auto statement: ctx->statement()) {
             if (terminate) {
-                std::println(stderr, "Error: Unreachable code '{}'.", statement->getText().c_str());
+                std::println(stderr, "Error in line {}: Unreachable code '{}'.",
+                             ctx->getStart()->getLine(), 
+                             statement->getText().c_str());
                 throw std::runtime_error("UNREACHEABLE_CODE");
                  continue;
             }
@@ -112,7 +114,9 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
     auto name = ctx->Identifier()->getText();
     auto exists = table.lookup(name).second;
     if (exists) {
-        std::println(stderr, "Error: '{}' was already defined in this scope.", name.c_str());
+        std::println(stderr, "Error in line {}: '{}' was already defined in this scope.", 
+                     ctx->getStart()->getLine(),
+                     name.c_str());
         throw std::runtime_error("REDEFINITION");
     }
 
@@ -133,12 +137,14 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
             new_symbol.label != initiallizer.label)
         ) {
             if (new_symbol.data_type != SymbolDataType::OBJECT) {
-                std::println(stderr, "Error: Variable '{}' not compatible with value of type '{}'.", 
+                std::println(stderr, "Error in line {}: Variable '{}' not compatible with value of type '{}'.",
+                             ctx->getStart()->getLine(), 
                              getSymbolDataTypeString(new_symbol.data_type).c_str(),
                              getSymbolDataTypeString(initiallizer.data_type).c_str());
                 throw std::runtime_error("NON_MATCHING_TYPES");
             } else {
-                std::println(stderr, "Error: Variable '{}' not compatible with value of type '{}'.", 
+                std::println(stderr, "Error in line {}: Variable '{}' not compatible with value of type '{}'.",
+                             ctx->getStart()->getLine(), 
                              new_symbol.label.c_str(),
                              initiallizer.label.c_str());
                 throw std::runtime_error("NON_MATCHING_TYPES");
@@ -163,9 +169,10 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
     auto name = ctx->Identifier()->getText();
     auto exists = table.lookup(name).second;
     if (exists) {
-        std::println(stderr, "Error: '{}' was already defined in this scope.", name.c_str());
+        std::println(stderr, "Error in line {}: '{}' was already defined in this scope.",
+                    ctx->getStart()->getLine(),
+                    name.c_str());
         throw std::runtime_error("REDEFINITION");
-        
     }
 
     Symbol new_symbol = {.name = name, .type = SymbolType::CONSTANT };
@@ -183,12 +190,14 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
         new_symbol.label != expression.label)
     ) {
         if (new_symbol.data_type != SymbolDataType::OBJECT) {
-            std::println(stderr, "Error: Constant '{}' not compatible with value of type '{}'.", 
+            std::println(stderr, "Error in line {}: Constant '{}' not compatible with value of type '{}'.",
+                         ctx->getStart()->getLine(), 
                          getSymbolDataTypeString(new_symbol.data_type).c_str(),
                          getSymbolDataTypeString(expression.data_type).c_str());
             throw std::runtime_error("NON_MATCHING_TYPES");
         } else {
-            std::println(stderr, "Error: Constant '{}' not compatible with value of type '{}'.", 
+            std::println(stderr, "Error in line {}: Constant '{}' not compatible with value of type '{}'.",
+                         ctx->getStart()->getLine(), 
                          new_symbol.label.c_str(),
                          expression.label.c_str());
             throw std::runtime_error("NON_MATCHING_TYPES");
@@ -220,20 +229,36 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
         auto symbol = castSymbol(visitExpression(ctx->expression().at(0)));
 
         if (symbol.data_type != SymbolDataType::OBJECT) {
-            std::println(stderr, "Error: Symbol {} is not of type object.", symbol.name.c_str());
+            std::println(stderr, "Error in line {}: Symbol {} is not of type object.",
+                         ctx->getStart()->getLine(),
+                         symbol.name.c_str());
             throw std::runtime_error("INVALID_PROPERTY_ACCESS");
+        }
+
+        if (symbol.type == SymbolType::CONSTANT) {
+            std::println(stderr, "Error in line {}: Can't modify a constant.",
+                             ctx->getStart()->getLine());
+            throw std::runtime_error("CONSTANT_MODIFICATION");
         }
 
         auto symbol_exists = table.get_property(symbol.label, name);
         if (!symbol_exists.second) {
-            std::println(stderr, "Error: Property '{}' isn't defined.", name.c_str());
+            std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
+                             ctx->getStart()->getLine(),
+                         name.c_str());
             throw std::runtime_error("UNDEFINED_ACCESS");
         }
 
         auto prop_symbol = symbol_exists.first;
+        if (prop_symbol.type == SymbolType::CONSTANT) {
+            std::println(stderr, "Error in line {}: Can't modify a constant property.",
+                             ctx->getStart()->getLine());
+            throw std::runtime_error("CONSTANT_MODIFICATION");
+        }
         auto expr = castSymbol(visitExpression(ctx->expression().at(1)));
-        if (prop_symbol.data_type != expr.data_type && prop_symbol.dimentions != expr.dimentions) {
-            std::println(stderr, "Error: Type mismatch on assigment");
+        if (prop_symbol.data_type != expr.data_type || prop_symbol.dimentions != expr.dimentions) {
+            std::println(stderr, "Error in line {}: Type mismatch on assigment",
+                             ctx->getStart()->getLine());
             throw std::runtime_error("NON_MATCHING_TYPES");
         }
 
@@ -244,14 +269,22 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
 
     auto symbol_exists = table.lookup(name, false);
     if (!symbol_exists.second) {
-        std::println(stderr, "Error: Symbol '{}' isn't defined.", name.c_str());
+        std::println(stderr, "Error in line {}: Symbol '{}' isn't defined.",
+                             ctx->getStart()->getLine(),
+                     name.c_str());
         throw std::runtime_error("UNDEFINED_ACCESS");
     }
 
     Symbol symbol = symbol_exists.first;
+    if (symbol.type == SymbolType::CONSTANT) {
+        std::println(stderr, "Error in line {}: Can't modify a constant.",
+                             ctx->getStart()->getLine());
+        throw std::runtime_error("CONSTANT_MODIFICATION");
+    }
     Symbol expr = castSymbol(visitExpression(ctx->expression().at(0)));
-    if (symbol.data_type != expr.data_type && symbol.dimentions != expr.dimentions) {
-        std::println(stderr, "Error: Type mismatch on assigment");
+    if (symbol.data_type != expr.data_type || symbol.dimentions != expr.dimentions) {
+        std::println(stderr, "Error in line {}: Type mismatch on assigment.",
+                             ctx->getStart()->getLine());
         throw std::runtime_error("NON_MATCHING_TYPES");
     }
 
@@ -271,7 +304,8 @@ std::any SemanticChecker::visitPrintStatement(CompiScriptParser::PrintStatementC
         symbol.data_type == SymbolDataType::NIL || 
         symbol.data_type == SymbolDataType::UNDEFINED) 
     {
-        std::println(stderr, "Error: Can't print symbol of type '{}'.", 
+        std::println(stderr, "Error in line {}: Can't print symbol of type '{}'.",
+                             ctx->getStart()->getLine(), 
                      getSymbolDataTypeString(symbol.data_type).c_str());
         throw std::runtime_error("INVALID_TYPE");
     }
@@ -281,9 +315,13 @@ std::any SemanticChecker::visitPrintStatement(CompiScriptParser::PrintStatementC
 std::any SemanticChecker::visitIfStatement(CompiScriptParser::IfStatementContext *ctx) {
     auto condition = castSymbol(visitExpression(ctx->expression()));
     if (condition.data_type != SymbolDataType::BOOLEAN) {
-        std::println(stderr, "Error: '{}' is not a boolean type", condition.value.c_str());
+        auto symbol_str = (condition.type == SymbolType::LITERAL) ? 
+            condition.value.c_str() : 
+            condition.name.c_str();
+        std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(),
+                     symbol_str);
         throw std::runtime_error("INVALID_TYPE");
-        
     }
 
     for (auto block :ctx->block()) {
@@ -292,17 +330,18 @@ std::any SemanticChecker::visitIfStatement(CompiScriptParser::IfStatementContext
         table.exit();
     }
 
-    // TODO: Check function cases
-
     return std::any();
 }
 
 std::any SemanticChecker::visitWhileStatement(CompiScriptParser::WhileStatementContext *ctx) {
     auto condition = castSymbol(visitExpression(ctx->expression()));
     if (condition.data_type != SymbolDataType::BOOLEAN) {
-        std::println(stderr, "Error: '{}' is not a boolean type", condition.value.c_str());
-        throw std::runtime_error("INVALID_TYPE");
-        
+        auto symbol_str = (condition.type == SymbolType::LITERAL) ? 
+            condition.value.c_str() : 
+            condition.name.c_str();
+        std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(), symbol_str);
+        throw std::runtime_error("INVALID_TYPE");    
     }
 
     bool flag_set = (context & TableContext::WHILE) ? true: false;
@@ -314,8 +353,6 @@ std::any SemanticChecker::visitWhileStatement(CompiScriptParser::WhileStatementC
 
     if (!flag_set)
         context = (TableContext)(context & ~TableContext::WHILE);
-
-    // TODO: Check function cases
 
     return std::any();
 }
@@ -323,9 +360,13 @@ std::any SemanticChecker::visitWhileStatement(CompiScriptParser::WhileStatementC
 std::any SemanticChecker::visitDoWhileStatement(CompiScriptParser::DoWhileStatementContext *ctx) {
     auto condition = castSymbol(visitExpression(ctx->expression()));
     if (condition.data_type != SymbolDataType::BOOLEAN) {
-        std::println(stderr, "Error: '{}' is not a boolean type", condition.value.c_str());
+        auto symbol_str = (condition.type == SymbolType::LITERAL) ? 
+            condition.value.c_str() : 
+            condition.name.c_str();
+        std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(),
+                     symbol_str);
         throw std::runtime_error("INVALID_TYPE");
-        
     }
 
     bool flag_set = (context & TableContext::WHILE) ? true: false;
@@ -337,8 +378,6 @@ std::any SemanticChecker::visitDoWhileStatement(CompiScriptParser::DoWhileStatem
 
     if (!flag_set)
         context = (TableContext)(context & ~TableContext::WHILE);
-
-    // TODO: Check function cases
 
     return std::any();
 }
@@ -356,9 +395,12 @@ std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementConte
     if (ctx->expression().at(0) != nullptr) {
         auto condition = castSymbol(visitExpression(ctx->expression().at(0)));
         if (condition.data_type != SymbolDataType::BOOLEAN) {
-            std::println(stderr, "Error: '{}' is not a boolean type", condition.value.c_str());
+            auto symbol_str = (condition.type == SymbolType::LITERAL) ? 
+                condition.value.c_str() : 
+                condition.name.c_str();
+            std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(), symbol_str);
             throw std::runtime_error("INVALID_TYPE");
-            
         }
     }
 
@@ -377,9 +419,9 @@ std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementConte
 std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatementContext *ctx) {
     auto iter_symbol = castSymbol(visitExpression(ctx->expression()));
     if (iter_symbol.dimentions == 0) {
-        std::println(stderr, "Error: For-each loop can't iterate over non array type.");
+        std::println(stderr, "Error in line {}: For-each loop can't iterate over non array type.",
+                             ctx->getStart()->getLine());
         throw std::runtime_error("INVALID_TYPE");
-        
     }
 
     Symbol new_symbol = {
@@ -420,7 +462,8 @@ std::any SemanticChecker::visitReturnStatement(CompiScriptParser::ReturnStatemen
             symbol_return.data_type != func_symbol.data_type ||
             symbol_return.dimentions != func_symbol.dimentions))
         {
-            std::println(stderr, "Error: Invalid return type.");
+            std::println(stderr, "Error in line {}: Invalid return type.",
+                             ctx->getStart()->getLine());
             throw std::runtime_error("INVALID_TYPE");
             
         }
@@ -452,14 +495,16 @@ std::any SemanticChecker::visitTryCatchStatement(CompiScriptParser::TryCatchStat
 std::any SemanticChecker::visitSwitchStatement(CompiScriptParser::SwitchStatementContext *ctx) {
     auto condition = castSymbol(visitExpression(ctx->expression()));
     if (condition.data_type == SymbolDataType::OBJECT) {
-        std::println(stderr, "Error: Can't switch a type 'OBJECT' expresion.");
+        std::println(stderr, "Error in line {}: Can't switch a type 'OBJECT' expresion.",
+                             ctx->getStart()->getLine());
         throw std::runtime_error("INVALID_TYPE");
          
     }
     for (auto s_case: ctx->switchCase()) {
         auto case_symbol = castSymbol(visitSwitchCase(s_case));
         if (case_symbol.data_type != condition.data_type) {
-            std::println(stderr, "Error: Case of type {} doesn't match condition of type {}.",
+            std::println(stderr, "Error in line {}: Case of type {} doesn't match condition of type {}.",
+                             ctx->getStart()->getLine(),
                          getSymbolDataTypeString(case_symbol.data_type),
                          getSymbolDataTypeString(condition.data_type));
             throw std::runtime_error("INVALID_TYPE");
@@ -476,7 +521,8 @@ std::any SemanticChecker::visitSwitchStatement(CompiScriptParser::SwitchStatemen
 std::any SemanticChecker::visitSwitchCase(CompiScriptParser::SwitchCaseContext *ctx) {
     auto case_symbol = castSymbol(visitExpression(ctx->expression()));
     if (case_symbol.type != SymbolType::LITERAL) {
-        std::println(stderr, "Error: Case expression must be of type 'LITERAL'.");
+        std::println(stderr, "Error in line {}: Case expression must be of type 'LITERAL'.",
+                             ctx->getStart()->getLine());
         throw std::runtime_error("INVALID_TYPE");
         
     }
@@ -504,7 +550,9 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
     auto name = ctx->Identifier()->getText();
     auto exists = table.lookup(name).second;
     if (exists) {
-        std::println(stderr, "Error: '{}' was already defined in this scope.", name.c_str());
+        std::println(stderr, "Error in line {}: '{}' was already defined in this scope.",
+                             ctx->getStart()->getLine(),
+                     name.c_str());
         throw std::runtime_error("REDEFINITION");
         
     }
@@ -537,7 +585,8 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
 
     auto symbol_return = castSymbol(visitBlock(ctx->block()));
     if (symbol_return.data_type == SymbolDataType::NIL && new_symbol.data_type != SymbolDataType::NIL) {
-        std::println(stderr, "Error: The function must return a value of type '{}'.", 
+        std::println(stderr, "Error in line {}: The function must return a value of type '{}'.",
+                             ctx->getStart()->getLine(), 
                      getSymbolDataTypeString(new_symbol.data_type));
         throw std::runtime_error("MISSING_RETURN");
         
@@ -577,7 +626,9 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
     auto name = ctx->Identifier().at(0)->getText();
     auto exists = table.lookup(name).second;
     if (exists) {
-        std::println(stderr, "Error: '{}' was already defined in this scope.", name.c_str());
+        std::println(stderr, "Error in line {}: '{}' was already defined in this scope.",
+                             ctx->getStart()->getLine(),
+                     name.c_str());
         throw std::runtime_error("REDEFINITION");
         
     }
@@ -587,7 +638,9 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
         auto label = ctx->Identifier().at(1)->getText();
         auto symbol_exists = table.lookup(label, false);
         if (!symbol_exists.second) {
-            std::println(stderr, "Error: parent class '{}' does not exist.", name.c_str());
+            std::println(stderr, "Error in line {}: parent class '{}' does not exist.",
+                             ctx->getStart()->getLine(),
+                         name.c_str());
             throw std::runtime_error("UNDEFINED_ACCESS");
             
         }
@@ -643,23 +696,28 @@ std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAss
     auto symbol = castSymbol(visitLeftHandSide(ctx->lhs));
 
     if (symbol.data_type != SymbolDataType::OBJECT) {
-        std::println(stderr, "Error: Symbol {} is not of type object.", symbol.name.c_str());
-        throw std::runtime_error("NON_MATCHING_TYPES");
+        std::println(stderr, "Error in line {}: Symbol {} is not of type object.",
+                             ctx->getStart()->getLine(),
+                     symbol.name.c_str());
+        throw std::runtime_error("INVALID_PROPERTY_ACCESS");
         
     }
 
     auto symbol_exists = table.get_property(symbol.label, prop_name);
     if (!symbol_exists.second) {
-        std::println(stderr, "Error: Property '{}' isn't defined.", prop_name.c_str());
+        std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
+                             ctx->getStart()->getLine(),
+                     prop_name.c_str());
         throw std::runtime_error("UNDEFINED_ACCESS");
         
     }
 
     auto prop_symbol = symbol_exists.first;
     auto expr = castSymbol(visit(ctx->assignmentExpr()));
-    if (prop_symbol.data_type != expr.data_type && prop_symbol.dimentions != expr.dimentions) {
-        std::println(stderr, "Error: Type mismatch on assigment");
-        
+    if (prop_symbol.data_type != expr.data_type || prop_symbol.dimentions != expr.dimentions) {
+        std::println(stderr, "Error in line {}: Type mismatch on assigment",
+                             ctx->getStart()->getLine());
+        throw std::runtime_error("NON_MATCHING_TYPES");
     }
 
     // prop_symbol.value = expr.value;
@@ -676,14 +734,20 @@ std::any SemanticChecker::visitTernaryExpr(CompiScriptParser::TernaryExprContext
     if (ctx->expression().size() > 0) {
         auto condition = castSymbol(visitLogicalOrExpr(ctx->logicalOrExpr()));
         if (condition.data_type != SymbolDataType::BOOLEAN) {
-            std::println(stderr, "Error: '{}' is not a boolean type", condition.value.c_str());
+            auto symbol_str = (condition.type == SymbolType::LITERAL) ? 
+                condition.value.c_str() : 
+                condition.name.c_str();
+            std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(),
+                         symbol_str);
             throw std::runtime_error("NON_MATCHING_TYPES");
         }
         // Type inference later?
         auto symbol_1 = castSymbol(visitExpression(ctx->expression().at(0)));
         auto symbol_2 = castSymbol(visitExpression(ctx->expression().at(1)));
         if (symbol_1.data_type != symbol_2.data_type) {
-            std::println(stderr, "Error: Both expressions in ternary operator must be the same type.");
+            std::println(stderr, "Error in line {}: Both expressions in ternary operator must be the same type.",
+                             ctx->getStart()->getLine());
             throw std::runtime_error("NON_MATCHING_TYPES");
             
         }
@@ -699,7 +763,9 @@ std::any SemanticChecker::visitLogicalOrExpr(CompiScriptParser::LogicalOrExprCon
         for (auto operand: ctx->logicalAndExpr()) { 
             symbol = castSymbol(visitLogicalAndExpr(operand));
             if (symbol.data_type != SymbolDataType::BOOLEAN) {
-                std::println(stderr, "Error in '{}': '{}' is not a boolean type", ctx->getText().c_str(), symbol.value.c_str());
+                std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(),
+                             symbol.value.c_str());
                 throw std::runtime_error("NON_MATCHING_TYPES");
                 
             }
@@ -716,7 +782,12 @@ std::any SemanticChecker::visitLogicalAndExpr(CompiScriptParser::LogicalAndExprC
         for (auto operand: ctx->equalityExpr()) { 
             symbol = castSymbol(visitEqualityExpr(operand));
             if (symbol.data_type != SymbolDataType::BOOLEAN) {
-                std::println(stderr, "Error: '{}' is not a boolean type", symbol.value.c_str());
+                auto symbol_str = (symbol.type == SymbolType::LITERAL) ? 
+                    symbol.value.c_str() : 
+                    symbol.name.c_str();
+                std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(),
+                             symbol_str);
                 throw std::runtime_error("NON_MATCHING_TYPES");
                 
             }
@@ -735,7 +806,8 @@ std::any SemanticChecker::visitEqualityExpr(CompiScriptParser::EqualityExprConte
         for (int i = 1; i < ctx->relationalExpr().size(); i++) { 
             next_symbol = castSymbol(visitRelationalExpr(ctx->relationalExpr().at(i)));
             if (symbol.data_type != next_symbol.data_type) {
-                std::println(stderr, "Error: Equality between different types.");
+                std::println(stderr, "Error in line {}: Equality between different types.",
+                             ctx->getStart()->getLine());
                 throw std::runtime_error("NON_MATCHING_TYPES");
                 
             }
@@ -753,7 +825,12 @@ std::any SemanticChecker::visitRelationalExpr(CompiScriptParser::RelationalExprC
         for (auto operand: ctx->additiveExpr()) { 
             symbol = castSymbol(visitAdditiveExpr(operand));
             if (symbol.data_type != SymbolDataType::INTEGER) {
-                std::println(stderr, "Error: '{}' is not an integer type", symbol.value.c_str());
+                auto symbol_str = (symbol.type == SymbolType::LITERAL) ? 
+                    symbol.value.c_str() : 
+                    symbol.name.c_str();
+                std::println(stderr, "Error in line {}: '{}' is not an integer type",
+                             ctx->getStart()->getLine(),
+                             symbol_str);
                 throw std::runtime_error("NON_MATCHING_TYPES");
                 
             }
@@ -772,7 +849,12 @@ std::any SemanticChecker::visitAdditiveExpr(CompiScriptParser::AdditiveExprConte
             for (auto operand: ctx->multiplicativeExpr()) { 
                 symbol = castSymbol(visitMultiplicativeExpr(operand));
                 if (symbol.data_type != SymbolDataType::INTEGER) {
-                    std::println(stderr, "Error: '{}' is not an integer type", symbol.value.c_str());
+                    auto symbol_str = (symbol.type == SymbolType::LITERAL) ? 
+                        symbol.value.c_str() : 
+                        symbol.name.c_str();
+                    std::println(stderr, "Error in line {}: '{}' is not an integer type",
+                             ctx->getStart()->getLine(),
+                                 symbol_str);
                     throw std::runtime_error("NON_MATCHING_TYPES");
                     
                 }
@@ -790,7 +872,12 @@ std::any SemanticChecker::visitMultiplicativeExpr(CompiScriptParser::Multiplicat
         for (auto operand: ctx->unaryExpr()) { 
             symbol = castSymbol(visitUnaryExpr(operand));
             if (symbol.data_type != SymbolDataType::INTEGER) {
-                std::println(stderr, "Error: '{}' is not an integer type", symbol.value.c_str());
+                auto symbol_str = (symbol.type == SymbolType::LITERAL) ? 
+                    symbol.value.c_str() : 
+                    symbol.name.c_str();
+                std::println(stderr, "Error in line {}: '{}' is not an integer type",
+                             ctx->getStart()->getLine(),
+                             symbol_str);
                 throw std::runtime_error("NON_MATCHING_TYPES");
                 
             }
@@ -809,13 +896,23 @@ std::any SemanticChecker::visitUnaryExpr(CompiScriptParser::UnaryExprContext *ct
 
         if (op == "!") {
             if (symbol.data_type != SymbolDataType::BOOLEAN) {
-                std::println(stderr, "Error: '{}' is not a boolean type", symbol.value.c_str());
+                auto symbol_str = (symbol.type == SymbolType::LITERAL) ? 
+                    symbol.value.c_str() : 
+                    symbol.name.c_str();
+                std::println(stderr, "Error in line {}: '{}' is not a boolean type",
+                             ctx->getStart()->getLine(),
+                             symbol_str);
                 throw std::runtime_error("NON_MATCHING_TYPES");
                 
             } 
         } else {
             if (symbol.data_type != SymbolDataType::INTEGER) {
-                std::println(stderr, "Error: '{}' is not an integer type", symbol.value.c_str());
+                auto symbol_str = (symbol.type == SymbolType::LITERAL) ? 
+                    symbol.value.c_str() : 
+                    symbol.name.c_str();
+                std::println(stderr, "Error in line {}: '{}' is not an integer type",
+                             ctx->getStart()->getLine(),
+                             symbol_str);
                 throw std::runtime_error("NON_MATCHING_TYPES");
                 
             }
@@ -841,7 +938,7 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
     Symbol new_symbol;
     new_symbol.value = ctx->getText();
     new_symbol.type = SymbolType::LITERAL;
-    new_symbol.size = 32;
+    new_symbol.size = 32; // TODO: Assign different sizes
     if (ctx->Literal() != nullptr) {
         auto literal = ctx->Literal()->getSymbol();
         if (std::regex_match(literal->getText(), std::regex("[0-9]+"))) 
@@ -855,7 +952,7 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
         new_symbol.data_type = SymbolDataType::BOOLEAN;
     } else {
         new_symbol.data_type = SymbolDataType::NIL;
-        new_symbol.value = "";
+        new_symbol.value = "null";
     }
 
     return makeAny(new_symbol);
@@ -865,7 +962,8 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
     auto atom = castSymbol(visit(ctx->primaryAtom()));
 
     if (atom.type == SymbolType::FUNCTION && ctx->suffixOp().empty()) {
-        std::println(stderr, "Error: Incomplete function call.");
+        std::println(stderr, "Error in line {}: Incomplete function call.",
+                             ctx->getStart()->getLine());
         throw std::runtime_error("INCOMPLETE_CALL");
         
     }
@@ -875,11 +973,11 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
         auto suffix = castSymbol(visit(suffixOp));
         if (atom.type == SymbolType::FUNCTION && suffix.type == SymbolType::ARGUMENT) {
             if (suffix.arg_list.size() != atom.arg_list.size()) {
-                std::println(stderr, "Error: Expected {} arguments, recieved {}.",
+                std::println(stderr, "Error in line {}: Expected {} arguments, recieved {}.",
+                             ctx->getStart()->getLine(),
                              atom.arg_list.size(),
                              suffix.arg_list.size());
-                throw std::runtime_error("NON_MATCHING_ARGUMENTS");
-                
+                throw std::runtime_error("INCOMPLETE_CALL");
             }
 
             int limit = atom.arg_list.size();
@@ -887,27 +985,33 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
                 auto expected = atom.arg_list.at(i).data_type;
                 auto received = suffix.arg_list.at(i).data_type;
                 if (expected != received) {
-                    std::println(stderr, "Error: Expected argument of type '{}', recieved '{}'.",
+                    std::println(stderr, "Error in line {}: Expected argument of type '{}', recieved '{}'.",
+                             ctx->getStart()->getLine(),
                                  getSymbolDataTypeString(expected),
                                  getSymbolDataTypeString(received));
                     throw std::runtime_error("NON_MATCHING_TYPES");
-                    
                 }
             }
         }
-
+        else
         if (atom.dimentions > 0 && suffix.data_type == SymbolDataType::INTEGER) {
             atom.dimentions--;
         }
-
+        else
         if (!atom.label.empty() && suffix.type == SymbolType::PROPERTY) {
             auto prop_exists = table.get_property(atom.label, suffix.name);
             if (!prop_exists.second) {
-                std::println(stderr, "Error: Property doesn't exist.");
+                std::println(stderr, "Error in line {}: Property doesn't exist.",
+                             ctx->getStart()->getLine());
                 throw std::runtime_error("UNDEFINED_ACCESS");
-                
             }
             atom = prop_exists.first;
+        }
+        else
+        {
+            std::println(stderr, "Error in line {}: Invalid suffix.",
+                             ctx->getStart()->getLine());
+            throw std::runtime_error("INVALID_SUFFIX");
         }
     }
 
@@ -918,7 +1022,9 @@ std::any SemanticChecker::visitIdentifierExpr(CompiScriptParser::IdentifierExprC
     auto name = ctx->Identifier()->getText();
     auto symbol_exists = table.lookup(name, false);
     if (!symbol_exists.second) {
-        std::println(stderr, "Error: '{}' is not defined", name.c_str());
+        std::println(stderr, "Error in {}: '{}' is not defined",
+                             ctx->getStart()->getLine(),
+                     name.c_str());
         throw std::runtime_error("UNDEFINED_ACCESS");
         
     }
@@ -929,39 +1035,47 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
     auto name = ctx->Identifier()->getText();
     auto symbol_exists = table.lookup(name, false);
     if (!symbol_exists.second) {
-        std::println(stderr, "Error: '{}' is not defined", name.c_str());
+        std::println(stderr, "Error in line {}: '{}' is not defined",
+                             ctx->getStart()->getLine(),
+                     name.c_str());
         throw std::runtime_error("UNDEFINED_ACCESS");
         
     }
 
     auto class_symbol = symbol_exists.first;
     if (class_symbol.type != SymbolType::CLASS) {
-        std::println(stderr, "Error: '{}' is not a class", name.c_str());
+        std::println(stderr, "Error in line {}: '{}' is not a class",
+                             ctx->getStart()->getLine(),
+                     name.c_str());
         throw std::runtime_error("NON_MATCHIN_TYPES");
         
     }
 
-    auto args_symbol = castSymbol(visitArguments(ctx->arguments()));
-    if (class_symbol.arg_list.size() != args_symbol.arg_list.size()) {
-        std::println(stderr, "Error: Expected {} arguments, recieved {}.",
-                     class_symbol.arg_list.size(),
-                     args_symbol.arg_list.size());
-        throw std::runtime_error("NON_MATCHING_ARGUMENTS");
-        
-    }
+    if (ctx->arguments() != nullptr) {
+        auto args_symbol = castSymbol(visitArguments(ctx->arguments()));
+        if (class_symbol.arg_list.size() != args_symbol.arg_list.size()) {
+            std::println(stderr, "Error in line {}: Expected {} arguments, recieved {}.",
+                             ctx->getStart()->getLine(),
+                         class_symbol.arg_list.size(),
+                         args_symbol.arg_list.size());
+            throw std::runtime_error("NON_MATCHING_ARGUMENTS");
 
-    int limit = class_symbol.arg_list.size();
-    for (int i = 0; i < limit; i++) {
-        auto expected = class_symbol.arg_list.at(i).data_type;
-        auto received = args_symbol.arg_list.at(i).data_type;
-        if (expected != received) {
-            std::println(stderr, "Error: Expected argument of type '{}', recieved '{}'.",
-                         getSymbolDataTypeString(expected),
-                         getSymbolDataTypeString(received));
-            throw std::runtime_error("NON_MATCHING_TYPES");
-            
         }
-    }        
+
+        int limit = class_symbol.arg_list.size();
+        for (int i = 0; i < limit; i++) {
+            auto expected = class_symbol.arg_list.at(i).data_type;
+            auto received = args_symbol.arg_list.at(i).data_type;
+            if (expected != received) {
+                std::println(stderr, "Error in line {}: Expected argument of type '{}', recieved '{}'.",
+                             ctx->getStart()->getLine(),
+                             getSymbolDataTypeString(expected),
+                             getSymbolDataTypeString(received));
+                throw std::runtime_error("NON_MATCHING_TYPES");
+
+            }
+        }        
+    }
 
     auto new_symbol = Symbol{
         .name = name,
@@ -974,7 +1088,8 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
 std::any SemanticChecker::visitThisExpr(CompiScriptParser::ThisExprContext *ctx) {
     auto symbol_exists = table.lookup("this", false);
     if (!symbol_exists.second) {
-        std::println(stderr, "Error: Invalid use of reserved word 'this'");
+        std::println(stderr, "Error in line {}: Invalid use of reserved word 'this'",
+                             ctx->getStart()->getLine());
         throw std::runtime_error("INVALID_KEYWORD_USE");
         
     }
@@ -992,7 +1107,8 @@ std::any SemanticChecker::visitIndexExpr(CompiScriptParser::IndexExprContext *ct
     Symbol array_index = castSymbol(visitExpression(ctx->expression()));
     if (array_index.data_type != SymbolDataType::INTEGER)
     {
-        std::println(stderr, "Error: Invalid index value.");
+        std::println(stderr, "Error in line {}: Invalid index value.",
+                             ctx->getStart()->getLine());
         throw std::runtime_error("INVALID_INDEX");
         array_index.data_type = SymbolDataType::INTEGER;
         array_index.value = "0";
@@ -1018,18 +1134,21 @@ std::any SemanticChecker::visitArguments(CompiScriptParser::ArgumentsContext *ct
 std::any SemanticChecker::visitArrayLiteral(CompiScriptParser::ArrayLiteralContext *ctx) {
     Symbol array_symbol = {.data_type = SymbolDataType::UNDEFINED};
     // TODO: let id = [] case
+    Symbol comparison = {};
     if (!ctx->expression().empty()) {
-        auto value_symbol = castSymbol(visitExpression(ctx->expression().at(0)));
-        array_symbol.data_type = value_symbol.data_type;
-        array_symbol.dimentions = value_symbol.dimentions;
+        comparison = castSymbol(visitExpression(ctx->expression().at(0)));
+        array_symbol.data_type = comparison.data_type;
+        array_symbol.dimentions = comparison.dimentions;
     }
 
     for (auto expr: ctx->expression()) {
         auto value_symbol = castSymbol(visitExpression(expr));
-        if (value_symbol.data_type != array_symbol.data_type && 
-            (value_symbol.size != array_symbol.size || value_symbol.dimentions != array_symbol.dimentions)
+        if (value_symbol.data_type != comparison.data_type || 
+            value_symbol.size != comparison.size || 
+            value_symbol.dimentions != comparison.dimentions
         ) {
-            std::println(stderr, "Error: Non matching data types in array literal");
+            std::println(stderr, "Error in line {}: Non matching data types in array literal",
+                             ctx->getStart()->getLine());
             throw std::runtime_error("NON_MATCHING_TYPES");
             
         }
@@ -1058,14 +1177,18 @@ std::any SemanticChecker::visitBaseType(CompiScriptParser::BaseTypeContext *ctx)
     if (symbol_type.data_type == SymbolDataType::OBJECT) { 
         auto symbol_exists = table.lookup(ctx->getText(), false);
         if (!symbol_exists.second) {
-            std::println(stderr, "Error: '{}' is not defined", ctx->getText().c_str());
+            std::println(stderr, "Error in line {}: '{}' is not defined",
+                             ctx->getStart()->getLine(),
+                         ctx->getText().c_str());
             throw std::runtime_error("UNDEFINED_ACCESS");
             
         }
 
         auto class_symbol = symbol_exists.first;
         if (class_symbol.type != SymbolType::CLASS) {
-            std::println(stderr, "Error: '{}' is not a class", ctx->getText().c_str());
+            std::println(stderr, "Error in line {}: '{}' is not a class",
+                             ctx->getStart()->getLine(),
+                         ctx->getText().c_str());
             throw std::runtime_error("NON_MATCHING_TYPES");
             
         }
