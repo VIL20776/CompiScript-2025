@@ -46,7 +46,7 @@ nombre = "Compiscript";
 
         auto d = table.lookup("d").first;
         REQUIRE(d.data_type == SymbolDataType::NIL);
-        REQUIRE(d.value == "");
+        REQUIRE(d.value == "null");
 
         auto nombre = table.lookup("nombre").first;
         REQUIRE(nombre.data_type == SymbolDataType::STRING);
