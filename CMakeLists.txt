@@ -10,8 +10,9 @@ set(ANTLR4_VERSION 13.2)
 find_package(antlr4-runtime REQUIRED)
 find_package(antlr4-generator REQUIRED)
 
-set(ANTLR4_JAR_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/antlr-4.${ANTLR4_VERSION}-complete.jar)
-set(ANTLR4_GRAMMAR_FILE ${CMAKE_CURRENT_SOURCE_DIR}/tools/CompiScript.g4)
+set(TOOLS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+set(ANTLR4_JAR_LOCATION ${TOOLS_DIR}/antlr-4.${ANTLR4_VERSION}-complete.jar)
+set(ANTLR4_GRAMMAR_FILE ${TOOLS_DIR}/CompiScript.g4)
 
 # Generate lexer and parser visitor files
 antlr4_generate(
@@ -52,9 +53,14 @@ if(Catch2_FOUND)
 
     enable_testing()
 
-    add_executable(tests tests/test_main.cpp ${SOURCES})
+    add_executable(tests ${SOURCES} 
+        tests/test.cpp
+        tests/test_semantics.cpp
+        tests/test_semantics_fail.cpp
+    )
     target_include_directories(tests PRIVATE 
         src/
+        tests/
         ${ANTLR4_INCLUDE_DIR} 
         ${ANTLR4_INCLUDE_DIR_cscript}
     ) 
