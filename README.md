@@ -14,10 +14,15 @@ docker build -t compiler-2025 .
 docker run -it --rm compiler-2025
 ```
 
-Ya que la IDE está pendiente, al correr la imagen de Docker se entra al contenedor en un entorno de 'bash'. Si se quieren agregar archivos de compiscript, se tendrá que usar un editor de text de terminal (como vim o nano) o agregarlos al proyecto antes de generar el contenedor (ej. agregar el archivo .cps al directorio *example/*)
+Ya que la IDE está pendiente, al correr la imagen de Docker se entra al contenedor en un entorno de 'bash'. Si se quieren agregar archivos de compiscript, se tendrá que usar un editor de texto de terminal (como vim o nano) o agregarlos al proyecto antes de generar el contenedor (ej. agregar el archivo .cps al directorio *example/*)
 ```
 // Ejemplo de ejecución dentro del contenedor
 ./build/cscript example/program.cps
+```
+
+Se pueden ver las tablas creadas con el comando *-print-tables*. Se crea una tabla por cada ambito creado, si en el ámbito no se crearon símbolos, la tabla no tendrá entradas.
+```
+./build/cscript example/program.cps -print-tables
 ```
 
 ## Dependencias y herramientas usadas
