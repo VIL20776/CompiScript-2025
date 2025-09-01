@@ -1,3 +1,4 @@
+#include <string>
 #include <utility>
 #include <memory>
 #include <print>
@@ -58,8 +59,8 @@ SymbolTable::lookup(const std::string &symbol_name, bool local) {
     return {{}, false};
 }
 
-std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symbol_label, const std::string &property_name) {
-    std::string label = symbol_label;
+std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symbol_type, const std::string &property_name) {
+    std::string label = symbol_type;
     do {
         auto symbol_exists = lookup(label, false);
         if (!symbol_exists.second) 
@@ -81,9 +82,9 @@ std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symb
     return {{}, false};
 }
 
-bool SymbolTable::set_property(const std::string &symbol_label, const std::string &property_name, const Symbol &property_symbol) {
+bool SymbolTable::set_property(const std::string &symbol_type, const std::string &property_name, const Symbol &property_symbol) {
     // TODO: Rework on CI phase
-    auto symbol_exists = lookup(symbol_label, false);
+    auto symbol_exists = lookup(symbol_type, false);
     if (!symbol_exists.second) 
         return false;
 
@@ -133,4 +134,86 @@ void SymbolTable::enter(const std::vector<Symbol> &initial_symbols) {
 
 void SymbolTable::exit() {
     current = current.lock()->parent.lock();
+}
+
+void SymbolTable::printTables() {
+    int id = 0;
+    printTable(*global.get(), "", id);
+}
+
+void SymbolTable::printTable(const Table& table, const std::string tabs, int& id) {
+    std::println("{}Table {}:", tabs, std::to_string(id));
+    for (auto name_symbol: table.table) {
+        std::print("{}", tabs.c_str());
+        printSymbol(name_symbol.second);
+    }
+
+    for (auto t: table.children) {
+        printTable(*t.get(), tabs + "\t", ++id);
+    }
+}
+
+void SymbolTable::printSymbol(const Symbol& symbol) {
+    std::print("name=({}) ", symbol.name.c_str());
+    std::print("label=({}) ", symbol.label.c_str());
+
+    std::string symbol_type;
+    switch (symbol.type) {
+        case SymbolType::LITERAL:
+            symbol_type = "Literal";
+            break;
+        case SymbolType::VARIABLE:
+            symbol_type = "Variable";
+            break;
+        case SymbolType::CONSTANT:
+            symbol_type = "Constant";
+            break;
+        case SymbolType::FUNCTION:
+            symbol_type = "Function";
+            break;
+        case SymbolType::CLASS:
+            symbol_type = "Class";
+            break;
+        case SymbolType::ARGUMENT:
+            symbol_type = "Argument";
+            break;
+        case SymbolType::PROPERTY:
+            symbol_type = "Property";
+            break;
+    }
+    std::print("type=({}) ", symbol_type);
+
+    std::string symbol_data_type;
+    switch (symbol.data_type) {
+        case SymbolDataType::UNDEFINED:
+            symbol_data_type = "Undefined";
+            break;
+        case SymbolDataType::INTEGER:
+            symbol_data_type = "Integer";
+            break;
+        case SymbolDataType::STRING:
+            symbol_data_type = "String";
+            break;
+        case SymbolDataType::BOOLEAN:
+            symbol_data_type = "Boolean";
+            break;
+        case SymbolDataType::NIL:
+            symbol_data_type = "Null";
+            break;
+        case SymbolDataType::OBJECT:
+            symbol_data_type = "Object";
+            break;
+    }
+    std::print("data_type=({}) ", symbol_data_type);
+
+    std::print("value=({}) ",symbol.value);
+    std::print("arg_list=(");
+    for (auto arg: symbol.arg_list) {
+        std::print("{} ",arg.name);
+    }
+    std::print(") ");
+    std::print("dimentions=({}) ",std::to_string(symbol.dimentions).c_str());
+    std::print("size=({}) ",std::to_string(symbol.size).c_str());
+    std::print("offset=({})\n",std::to_string(symbol.offset).c_str());
+
 }

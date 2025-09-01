@@ -85,4 +85,10 @@ public:
     void exit();
 
     std::weak_ptr<Table> getCurrent() {return current;}
+
+    void printTables();
+
+    void printTable(const Table& table, const std::string tabs, int& id);
+
+    void printSymbol(const Symbol& symbol);
 };
