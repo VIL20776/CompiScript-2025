@@ -87,10 +87,9 @@ std::any SemanticChecker::visitBlock(CompiScriptParser::BlockContext *ctx) {
         bool terminate = false;
         for (auto statement: ctx->statement()) {
             if (terminate) {
-                std::println(stderr, "Error in line {}: Unreachable code '{}'.",
-                             ctx->getStart()->getLine(), 
-                             statement->getText().c_str());
-                throw std::runtime_error("UNREACHEABLE_CODE");
+                std::println(stderr, "Error in line {}: Unreachable code.",
+                             ctx->getStart()->getLine()); 
+                throw std::runtime_error("UNREACHABLE_CODE");
                  continue;
             }
 
@@ -99,12 +98,37 @@ std::any SemanticChecker::visitBlock(CompiScriptParser::BlockContext *ctx) {
                 symbol_return = temp;
                 terminate = true;
             }
+
+            if ((context & TableContext::FOR) || (context & TableContext::WHILE)) {
+                if (statement->continueStatement() != nullptr ||
+                    statement->breakStatement() != nullptr) 
+                {
+                    terminate = true;
+                }
+            }
         }
 
         if (!symbol_return.has_value()) 
             symbol_return = makeAny({.data_type = SymbolDataType::NIL});
 
         return symbol_return;
+    }
+    if ((context & TableContext::FOR) || (context & TableContext::WHILE)) {
+        bool terminate = false;
+        for (auto statement: ctx->statement()) {
+            if (terminate) {
+                std::println(stderr, "Error in line {}: Unreachable code.",
+                             ctx->getStart()->getLine());
+                throw std::runtime_error("UNREACHABLE_CODE");
+            }
+
+            visitStatement(statement);
+            if (statement->continueStatement() != nullptr ||
+                statement->breakStatement() != nullptr) 
+            {
+                terminate = true;
+            }
+        }
     }
     return visitChildren(ctx);
 }
@@ -179,6 +203,7 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
 
     if (ctx->typeAnnotation() != nullptr) {
         auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
+        new_symbol.label = symbol_type.label;
         new_symbol.data_type = symbol_type.data_type;
         new_symbol.dimentions = symbol_type.dimentions;
     }
@@ -383,8 +408,6 @@ std::any SemanticChecker::visitDoWhileStatement(CompiScriptParser::DoWhileStatem
 }
 
 std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementContext *ctx) {
-    bool flag_set = (context & TableContext::FOR) ? true: false;
-    context = (TableContext)(context | TableContext::FOR);
     if (ctx->assignment() != nullptr) 
         visitAssignment(ctx->assignment());
 
@@ -406,6 +429,9 @@ std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementConte
 
     if (ctx->expression().at(1) != nullptr)
         visitExpression(ctx->expression().at(1));
+
+    bool flag_set = (context & TableContext::FOR) ? true: false;
+    context = (TableContext)(context | TableContext::FOR);
 
     visitBlock(ctx->block());
     table.exit();
@@ -699,7 +725,7 @@ std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAss
         std::println(stderr, "Error in line {}: Symbol {} is not of type object.",
                              ctx->getStart()->getLine(),
                      symbol.name.c_str());
-        throw std::runtime_error("INVALID_PROPERTY_ACCESS");
+        throw std::runtime_error("INVALID_SUFFIX");
         
     }
 
@@ -969,7 +995,6 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
     }
 
     for (auto suffixOp: ctx->suffixOp()) {
-        // TODO: Check other Suffixes
         auto suffix = castSymbol(visit(suffixOp));
         if (atom.type == SymbolType::FUNCTION && suffix.type == SymbolType::ARGUMENT) {
             if (suffix.arg_list.size() != atom.arg_list.size()) {
@@ -1022,7 +1047,7 @@ std::any SemanticChecker::visitIdentifierExpr(CompiScriptParser::IdentifierExprC
     auto name = ctx->Identifier()->getText();
     auto symbol_exists = table.lookup(name, false);
     if (!symbol_exists.second) {
-        std::println(stderr, "Error in {}: '{}' is not defined",
+        std::println(stderr, "Error in line {}: '{}' is not defined",
                              ctx->getStart()->getLine(),
                      name.c_str());
         throw std::runtime_error("UNDEFINED_ACCESS");
@@ -1058,8 +1083,7 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
                              ctx->getStart()->getLine(),
                          class_symbol.arg_list.size(),
                          args_symbol.arg_list.size());
-            throw std::runtime_error("NON_MATCHING_ARGUMENTS");
-
+            throw std::runtime_error("INCOMPLETE_CALL");
         }
 
         int limit = class_symbol.arg_list.size();
@@ -1072,9 +1096,16 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
                              getSymbolDataTypeString(expected),
                              getSymbolDataTypeString(received));
                 throw std::runtime_error("NON_MATCHING_TYPES");
-
             }
         }        
+    } else {
+        if (!class_symbol.arg_list.empty()) {
+            std::println(stderr, "Error in line {}: Expected {} arguments, recieved none.",
+                             ctx->getStart()->getLine(),
+                         class_symbol.arg_list.size());
+            throw std::runtime_error("INCOMPLETE_CALL");
+        }
+
     }
 
     auto new_symbol = Symbol{
@@ -1107,9 +1138,9 @@ std::any SemanticChecker::visitIndexExpr(CompiScriptParser::IndexExprContext *ct
     Symbol array_index = castSymbol(visitExpression(ctx->expression()));
     if (array_index.data_type != SymbolDataType::INTEGER)
     {
-        std::println(stderr, "Error in line {}: Invalid index value.",
+        std::println(stderr, "Error in line {}: Expected integer value as index.",
                              ctx->getStart()->getLine());
-        throw std::runtime_error("INVALID_INDEX");
+        throw std::runtime_error("INVALID_TYPE");
         array_index.data_type = SymbolDataType::INTEGER;
         array_index.value = "0";
         
