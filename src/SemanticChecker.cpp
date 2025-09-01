@@ -51,32 +51,13 @@ std::any SemanticChecker::visitProgram(CompiScriptParser::ProgramContext *ctx) {
 
 std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ctx) {
     if (ctx->returnStatement() != nullptr) {
-        if (!(context & TableContext::FUNCTION)) {
-            std::println(stderr, "Error in line {}: Invalid 'return' outside function.", ctx->getStart()->getLine());
-            throw std::runtime_error("INVALID_KEYWORD_USE");
-        }
-        else {
-            return visitReturnStatement(ctx->returnStatement());
-        }
-    }
-    if (ctx->breakStatement() != nullptr) {
-        if (!((context & TableContext::WHILE) || (context & TableContext::FOR))) {
-            std::println(stderr, "Error in line {}: Invalid use of 'break' keyword.", ctx->getStart()->getLine());
-            throw std::runtime_error("INVALID_KEYWORD_USE");
-            
-        }
-    }
-    if (ctx->continueStatement() != nullptr) {
-        if (!((context & TableContext::WHILE) || (context & TableContext::FOR))) {
-            std::println(stderr, "Error in line {}: Invalid use of 'continue' keyword.", ctx->getStart()->getLine());
-            throw std::runtime_error("INVALID_KEYWORD_USE");
-            
-        }
+        return visitReturnStatement(ctx->returnStatement());
     }
     if (ctx->block() != nullptr) {
         table.enter();
         visitBlock(ctx->block());
         table.exit();
+        return std::any();
     }
     return visitChildren(ctx);
 }
@@ -181,6 +162,12 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
         new_symbol.data_type = initiallizer.data_type;
         new_symbol.dimentions = initiallizer.dimentions;
         new_symbol.size = initiallizer.size;
+    }
+
+    if (new_symbol.data_type == SymbolDataType::UNDEFINED) {
+        std::println(stderr, "Error in line {}: Variables must have a type defined.",
+                     ctx->getStart()->getLine());
+        throw std::runtime_error("INVALID_DECLARATION");
     }
 
     table.insert(new_symbol);
@@ -472,14 +459,27 @@ std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatem
 }
 
 std::any SemanticChecker::visitBreakStatement(CompiScriptParser::BreakStatementContext *ctx) {
+        if (!((context & TableContext::WHILE) || (context & TableContext::FOR))) {
+            std::println(stderr, "Error in line {}: Invalid use of 'break' keyword.", ctx->getStart()->getLine());
+            throw std::runtime_error("INVALID_KEYWORD_USE");
+        }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitContinueStatement(CompiScriptParser::ContinueStatementContext *ctx) {
+    if (!((context & TableContext::WHILE) || (context & TableContext::FOR))) {
+        std::println(stderr, "Error in line {}: Invalid use of 'continue' keyword.", ctx->getStart()->getLine());
+        throw std::runtime_error("INVALID_KEYWORD_USE");
+    }
     return visitChildren(ctx);
 }
 
 std::any SemanticChecker::visitReturnStatement(CompiScriptParser::ReturnStatementContext *ctx) {
+    if (!(context & TableContext::FUNCTION)) {
+        std::println(stderr, "Error in line {}: Invalid 'return' outside function.", ctx->getStart()->getLine());
+        throw std::runtime_error("INVALID_KEYWORD_USE");
+    }
+
     if (ctx->expression() != nullptr) {
         auto func_symbol = table.lookup(context_name, false).first;
         auto symbol_return = castSymbol(visitExpression(ctx->expression()));
@@ -649,6 +649,12 @@ std::any SemanticChecker::visitParameter(CompiScriptParser::ParameterContext *ct
 }
 
 std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarationContext *ctx) {
+    if (context & TableContext::CLASS) {
+        std::println(stderr, "Error: A class can't be defined within another class.",
+                             ctx->getStart()->getLine());
+        throw std::runtime_error("INVALID_DECLARATION");
+    } 
+
     auto name = ctx->Identifier().at(0)->getText();
     auto exists = table.lookup(name).second;
     if (exists) {
@@ -659,7 +665,7 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
         
     }
 
-    Symbol new_symbol = {.name = name, .type = SymbolType::CLASS };
+    Symbol new_symbol = {.name = name, .type = SymbolType::CLASS, .data_type = SymbolDataType::NIL };
     if (ctx->Identifier().size() > 1) {
         auto label = ctx->Identifier().at(1)->getText();
         auto symbol_exists = table.lookup(label, false);
@@ -1183,8 +1189,9 @@ std::any SemanticChecker::visitArrayLiteral(CompiScriptParser::ArrayLiteralConte
             throw std::runtime_error("NON_MATCHING_TYPES");
             
         }
+        if (!value_symbol.value.empty())
+            array_symbol.value.append(value_symbol.value + ';');
 
-        array_symbol.value.append(value_symbol.value + ';');
         array_symbol.size += value_symbol.size; 
     }
 

@@ -334,3 +334,26 @@ TEST_CASE("Function return", "[MISSING_RETURN]") {
     };
     checkErrors(test_strings, expect);
 }
+
+TEST_CASE("Declarations", "[INVALID_DECLARATION]") {
+    std::string expect = "INVALID_DECLARATION";
+
+    std::vector<std::string> test_strings {
+        R"(
+        class Animal {
+            let nombre: string;
+
+            function constructor(nombre: string) {
+                this.nombre = nombre;
+            }
+            function crear_perro() {
+                class Perro {
+                    let nombre: string;
+                }
+            }
+        }
+        )",
+        "let x;",
+    };
+    checkErrors(test_strings, expect);
+}
