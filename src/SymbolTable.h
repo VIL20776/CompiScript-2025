@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <any>
 
 enum class SymbolType: int {
     LITERAL,
@@ -59,6 +60,14 @@ struct Table {
     std::vector<std::shared_ptr<Table>> children;
     std::unordered_map<std::string, Symbol> table;
 };
+
+std::any makeAny(Symbol symbol);
+
+Symbol castSymbol(std::any symbol);
+
+SymbolDataType getSymbolDataType(std::string type_name);
+
+std::string getSymbolDataTypeString(SymbolDataType type);
 
 class SymbolTable
 {

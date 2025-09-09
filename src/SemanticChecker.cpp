@@ -10,36 +10,6 @@
 
 using namespace CompiScript;
 
-// Helper functions
-
-std::any makeAny(Symbol symbol) {
-    return std::make_any<Symbol>(symbol);
-}
-
-Symbol castSymbol(std::any symbol) {
-    return std::any_cast<Symbol>(symbol);
-}
-
-SymbolDataType getSymbolDataType(std::string type_name) {
-    if (type_name == "integer") return SymbolDataType::INTEGER;
-    if (type_name == "string") return SymbolDataType::STRING;
-    if (type_name == "boolean") return SymbolDataType::BOOLEAN;
-    return SymbolDataType::OBJECT;
-}
-
-std::string getSymbolDataTypeString(SymbolDataType type) {
-    std::string string_type;
-    switch (type) {
-        case SymbolDataType::UNDEFINED: string_type = "undefined"; break;
-        case SymbolDataType::INTEGER: string_type = "integer"; break;
-        case SymbolDataType::BOOLEAN: string_type = "boolean"; break;
-        case SymbolDataType::STRING: string_type = "string"; break;
-        case SymbolDataType::OBJECT: string_type = "object"; break;
-        case SymbolDataType::NIL: string_type = "null"; break;
-    }
-    return string_type;
-}
-
 SemanticChecker::SemanticChecker(): table(), context(TableContext::NORMAL), context_name("") {}
 SemanticChecker::~SemanticChecker() {}
 
@@ -484,9 +454,8 @@ std::any SemanticChecker::visitReturnStatement(CompiScriptParser::ReturnStatemen
         auto func_symbol = table.lookup(context_name, false).first;
         auto symbol_return = castSymbol(visitExpression(ctx->expression()));
 
-        if (func_symbol.data_type != SymbolDataType::NIL && (
-            symbol_return.data_type != func_symbol.data_type ||
-            symbol_return.dimentions != func_symbol.dimentions))
+        if (symbol_return.data_type != func_symbol.data_type ||
+            symbol_return.dimentions != func_symbol.dimentions)
         {
             std::println(stderr, "Error in line {}: Invalid return type.",
                              ctx->getStart()->getLine());
@@ -720,42 +689,44 @@ std::any SemanticChecker::visitExpression(CompiScriptParser::ExpressionContext *
 }
 
 std::any SemanticChecker::visitAssignExpr(CompiScriptParser::AssignExprContext *ctx) {
-    return visitChildren(ctx);
+    return std::any();
 }
 
 std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAssignExprContext *ctx) {
-    auto prop_name = ctx->Identifier()->getText();
-    auto symbol = castSymbol(visitLeftHandSide(ctx->lhs));
-
-    if (symbol.data_type != SymbolDataType::OBJECT) {
-        std::println(stderr, "Error in line {}: Symbol {} is not of type object.",
-                             ctx->getStart()->getLine(),
-                     symbol.name.c_str());
-        throw std::runtime_error("INVALID_SUFFIX");
-        
-    }
-
-    auto symbol_exists = table.get_property(symbol.label, prop_name);
-    if (!symbol_exists.second) {
-        std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
-                             ctx->getStart()->getLine(),
-                     prop_name.c_str());
-        throw std::runtime_error("UNDEFINED_ACCESS");
-        
-    }
-
-    auto prop_symbol = symbol_exists.first;
-    auto expr = castSymbol(visit(ctx->assignmentExpr()));
-    if (prop_symbol.data_type != expr.data_type || prop_symbol.dimentions != expr.dimentions) {
-        std::println(stderr, "Error in line {}: Type mismatch on assigment",
-                             ctx->getStart()->getLine());
-        throw std::runtime_error("NON_MATCHING_TYPES");
-    }
-
-    // prop_symbol.value = expr.value;
-    // table.set_property(symbol.label, prop_name, prop_symbol);
-
-    return makeAny(prop_symbol);
+    // std::println("Calling assignment property expr");
+    // auto prop_name = ctx->Identifier()->getText();
+    // auto symbol = castSymbol(visitLeftHandSide(ctx->lhs));
+    //
+    // if (symbol.data_type != SymbolDataType::OBJECT) {
+    //     std::println(stderr, "Error in line {}: Symbol {} is not of type object.",
+    //                          ctx->getStart()->getLine(),
+    //                  symbol.name.c_str());
+    //     throw std::runtime_error("INVALID_SUFFIX");
+    //     
+    // }
+    //
+    // auto symbol_exists = table.get_property(symbol.label, prop_name);
+    // if (!symbol_exists.second) {
+    //     std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
+    //                          ctx->getStart()->getLine(),
+    //                  prop_name.c_str());
+    //     throw std::runtime_error("UNDEFINED_ACCESS");
+    //     
+    // }
+    //
+    // auto prop_symbol = symbol_exists.first;
+    // auto expr = castSymbol(visit(ctx->assignmentExpr()));
+    // if (prop_symbol.data_type != expr.data_type || prop_symbol.dimentions != expr.dimentions) {
+    //     std::println(stderr, "Error in line {}: Type mismatch on assigment",
+    //                          ctx->getStart()->getLine());
+    //     throw std::runtime_error("NON_MATCHING_TYPES");
+    // }
+    //
+    // // prop_symbol.value = expr.value;
+    // // table.set_property(symbol.label, prop_name, prop_symbol);
+    //
+    // return makeAny(prop_symbol);
+    return std::any();
 }
 
 std::any SemanticChecker::visitExprNoAssign(CompiScriptParser::ExprNoAssignContext *ctx) {

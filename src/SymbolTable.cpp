@@ -2,8 +2,37 @@
 #include <utility>
 #include <memory>
 #include <print>
+#include <any>
 
 #include "SymbolTable.h"
+
+std::any makeAny(Symbol symbol) {
+    return std::make_any<Symbol>(symbol);
+}
+
+Symbol castSymbol(std::any symbol) {
+    return std::any_cast<Symbol>(symbol);
+}
+
+SymbolDataType getSymbolDataType(std::string type_name) {
+    if (type_name == "integer") return SymbolDataType::INTEGER;
+    if (type_name == "string") return SymbolDataType::STRING;
+    if (type_name == "boolean") return SymbolDataType::BOOLEAN;
+    return SymbolDataType::OBJECT;
+}
+
+std::string getSymbolDataTypeString(SymbolDataType type) {
+    std::string string_type;
+    switch (type) {
+        case SymbolDataType::UNDEFINED: string_type = "undefined"; break;
+        case SymbolDataType::INTEGER: string_type = "integer"; break;
+        case SymbolDataType::BOOLEAN: string_type = "boolean"; break;
+        case SymbolDataType::STRING: string_type = "string"; break;
+        case SymbolDataType::OBJECT: string_type = "object"; break;
+        case SymbolDataType::NIL: string_type = "null"; break;
+    }
+    return string_type;
+}
 
 SymbolTable::SymbolTable()
 {
