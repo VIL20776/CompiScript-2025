@@ -112,6 +112,11 @@ TEST_CASE("Type validation", "[INVALID_TYPE]") {
         }
         )",
         R"(
+        function saludar2() {
+            return "hola";
+        }
+        )",
+        R"(
         switch (animal) {}
         )",
         R"(
