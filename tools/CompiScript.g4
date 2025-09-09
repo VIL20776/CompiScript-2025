@@ -95,19 +95,19 @@ logicalAndExpr
   ;
 
 equalityExpr
-  : relationalExpr ( ('==' | '!=') relationalExpr )*
+  : relationalExpr ( (EQL | NEQ) relationalExpr )*
   ;
 
 relationalExpr
-  : additiveExpr ( ('<' | '<=' | '>' | '>=') additiveExpr )*
+  : additiveExpr ( (LT | LTE | GT | GTE) additiveExpr )*
   ;
 
 additiveExpr
-  : multiplicativeExpr ( op=(ADD | SUB) multiplicativeExpr )*
+  : multiplicativeExpr ( (ADD | SUB) multiplicativeExpr )*
   ;
 
 multiplicativeExpr
-  : unaryExpr ( ('*' | '/' | '%') unaryExpr )*
+  : unaryExpr ( (MUL | DIV | MOD) unaryExpr )*
   ;
 
 unaryExpr
@@ -170,8 +170,20 @@ StringLiteral: '"' (~["\r\n])* '"';
 
 Identifier: [a-zA-Z_][a-zA-Z0-9_]*;
 
+EQL: '==';
+NEQ: '!=';
+
+LT: '<';
+LTE: '<='; 
+GT: '>';
+GTE: '>=';
+
 ADD: '+';
 SUB: '-';
+
+MUL: '*';
+DIV: '/';
+MOD: '%';
 
 WS: [ \t\r\n]+ -> skip;
 COMMENT: '//' ~[\r\n]* -> skip;
