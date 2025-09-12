@@ -8,21 +8,23 @@
 
 namespace CompiScript {
 
+struct Quad {
+    std::string op;
+    std::string arg1;
+    std::string arg2;
+    std::string result;
+};
+
 class IRGenerator: public CompiScriptBaseVisitor
 {
 private:
 
-    struct Quad {
-        std::string op;
-        std::string arg1;
-        std::string arg2;
-        std::string result;
-    };
-
     SymbolTable* table;
-
-    int temp_count;
     std::vector<Quad> quadruplets;
+    std::vector<Quad> optimize;
+    int temp_count;
+
+    void optimizeQuadruplets();
 
 public:
     IRGenerator(SymbolTable *table);

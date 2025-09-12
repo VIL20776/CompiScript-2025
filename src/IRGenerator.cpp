@@ -1,5 +1,4 @@
 #include <string>
-#include <print>
 #include <regex>
 #include <any>
 
@@ -9,9 +8,26 @@
 
 using namespace CompiScript;
 
-IRGenerator::IRGenerator(SymbolTable* table): table(table), temp_count(), quadruplets() {}
 
-IRGenerator::~IRGenerator() {};
+IRGenerator::IRGenerator(SymbolTable* table): 
+    table(table), 
+    optimize(), 
+    quadruplets(), 
+    temp_count(0) {}
+
+IRGenerator::~IRGenerator() {}
+
+void IRGenerator::optimizeQuadruplets() {
+    if (optimize.empty() && temp_count == 0) {
+        quadruplets.append_range(optimize);
+        return;
+    }
+
+    // TODO
+
+    quadruplets.append_range(optimize);
+    optimize.clear();
+}
 
 std::string IRGenerator::getTAC() {
     std::string tac;
@@ -34,14 +50,34 @@ std::any IRGenerator::visitStatement(CompiScriptParser::StatementContext *ctx) {
 }
 
 std::any IRGenerator::visitBlock(CompiScriptParser::BlockContext *ctx) {
-    return visitChildren(ctx);
+    table->enter();
+    visitChildren(ctx);
+    table->exit();
+
+    return std::any();
 }
 
 std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclarationContext *ctx) {
-    return visitChildren(ctx);
+    auto target = table->lookup(ctx->Identifier()->getText()).first;
+    auto source = castSymbol(visitInitializer(ctx->initializer()));
+    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
+
+    optimize.push_back({.arg1 = arg, .result = target.label + target.name});
+    optimizeQuadruplets();
+
+    temp_count = 0;
+    return std::any();
 }
 
 std::any IRGenerator::visitConstantDeclaration(CompiScriptParser::ConstantDeclarationContext *ctx) {
+    auto target = table->lookup(ctx->Identifier()->getText()).first;
+    auto source = castSymbol(visitExpression(ctx->expression()));
+    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
+
+    optimize.push_back({.arg1 = arg, .result = target.name});
+    optimizeQuadruplets();
+
+    temp_count = 0;
     return visitChildren(ctx);
 }
 
@@ -54,6 +90,17 @@ std::any IRGenerator::visitInitializer(CompiScriptParser::InitializerContext *ct
 }
 
 std::any IRGenerator::visitAssignment(CompiScriptParser::AssignmentContext *ctx) {
+    if (ctx->expression().size() > 1) {
+        //TODO
+    }
+    auto target = table->lookup(ctx->Identifier()->getText()).first;
+    auto source = castSymbol(visitExpression(ctx->expression().at(0)));
+    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
+
+    optimize.push_back({.arg1 = arg, .result = target.label + target.name});
+    optimizeQuadruplets();
+
+    temp_count = 0;
     return visitChildren(ctx);
 }
 
@@ -94,6 +141,9 @@ std::any IRGenerator::visitContinueStatement(CompiScriptParser::ContinueStatemen
 }
 
 std::any IRGenerator::visitReturnStatement(CompiScriptParser::ReturnStatementContext *ctx) {
+    auto ret = castSymbol(visitExpression(ctx->expression()));
+    auto arg = (ret.type == SymbolType::LITERAL) ? ret.value : ret.label + ret.name;
+    quadruplets.push_back({.op = "return", .arg1 = ret.label + ret.name});
     return visitChildren(ctx);
 }
 
@@ -114,6 +164,15 @@ std::any IRGenerator::visitDefaultCase(CompiScriptParser::DefaultCaseContext *ct
 }
 
 std::any IRGenerator::visitFunctionDeclaration(CompiScriptParser::FunctionDeclarationContext *ctx) {
+    auto function = table->lookup(ctx->Identifier()->getText()).first;
+
+    quadruplets.push_back({.op = "begin", .arg1 = function.label + function.name});
+    for (auto arg: function.arg_list) 
+        quadruplets.push_back({.op = "param", .result = arg.label + arg.name});
+    
+    visitBlock(ctx->block());
+
+    quadruplets.push_back({.op = "end", .arg1 = function.label + function.name});
     return visitChildren(ctx);
 }
 
@@ -159,13 +218,14 @@ std::any IRGenerator::visitLogicalOrExpr(CompiScriptParser::LogicalOrExprContext
         for (int i = 1; i < ctx->logicalAndExpr().size(); i++) {
             auto second_symbol = castSymbol(visitLogicalAndExpr(ctx->logicalAndExpr().at(i)));
 
-            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.name;
-            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.name;
+            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.label + first_symbol.name;
+            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.label + second_symbol.name;
             auto temp = "t" + std::to_string(temp_count++);
 
-            quadruplets.push_back({.op = "||", .arg1 = arg1, .arg2 = arg2, .result = temp});
+            optimize.push_back({.op = "||", .arg1 = arg1, .arg2 = arg2, .result = temp});
 
             first_symbol.name = temp;
+            first_symbol.label = "";
             first_symbol.type = SymbolType::VARIABLE;
         }
         return makeAny(first_symbol);
@@ -179,13 +239,14 @@ std::any IRGenerator::visitLogicalAndExpr(CompiScriptParser::LogicalAndExprConte
         for (int i = 1; i < ctx->equalityExpr().size(); i++) {
             auto second_symbol = castSymbol(visitEqualityExpr(ctx->equalityExpr().at(i)));
 
-            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.name;
-            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.name;
+            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.label + first_symbol.name;
+            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.label + second_symbol.name;
             auto temp = "t" + std::to_string(temp_count++);
 
-            quadruplets.push_back({.op = "&&", .arg1 = arg1, .arg2 = arg2, .result = temp});
+            optimize.push_back({.op = "&&", .arg1 = arg1, .arg2 = arg2, .result = temp});
 
             first_symbol.name = temp;
+            first_symbol.label = "";
             first_symbol.type = SymbolType::VARIABLE;
         }
         return makeAny(first_symbol);
@@ -200,8 +261,9 @@ std::any IRGenerator::visitEqualityExpr(CompiScriptParser::EqualityExprContext *
         for (int i = 1; i < ctx->relationalExpr().size(); i++) {
             auto second_symbol = castSymbol(visitRelationalExpr(ctx->relationalExpr().at(i)));
 
-            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.name;
-            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.name;
+            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.label + first_symbol.name;
+            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.label + second_symbol.name;
+
             auto temp = "t" + std::to_string(temp_count++);
 
             auto op = ctx->children.at(op_index)->getText();
@@ -216,9 +278,10 @@ std::any IRGenerator::visitEqualityExpr(CompiScriptParser::EqualityExprContext *
                 continue;
             } 
 
-            quadruplets.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
+            optimize.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
 
             first_symbol.name = temp;
+            first_symbol.label = "";
             first_symbol.type = SymbolType::VARIABLE;
         }
         return makeAny(first_symbol);
@@ -233,15 +296,17 @@ std::any IRGenerator::visitRelationalExpr(CompiScriptParser::RelationalExprConte
         for (int i = 1; i < ctx->additiveExpr().size(); i++) {
             auto second_symbol = castSymbol(visitAdditiveExpr(ctx->additiveExpr().at(i)));
 
-            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.name;
-            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.name;
+            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.label + first_symbol.name;
+            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.label + second_symbol.name;
+
             auto temp = "t" + std::to_string(temp_count++);
 
             auto op = ctx->children.at(op_index)->getText();
-            quadruplets.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
+            optimize.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
             op_index += 2;
 
             first_symbol.name = temp;
+            first_symbol.label = "";
             first_symbol.type = SymbolType::VARIABLE;
         }
         return makeAny(first_symbol);
@@ -256,8 +321,9 @@ std::any IRGenerator::visitAdditiveExpr(CompiScriptParser::AdditiveExprContext *
         for (int i = 1; i < ctx->multiplicativeExpr().size(); i++) {
             auto second_symbol = castSymbol(visitMultiplicativeExpr(ctx->multiplicativeExpr().at(i)));
 
-            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.name;
-            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.name;
+            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.label + first_symbol.name;
+            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.label + second_symbol.name;
+
             auto temp = "t" + std::to_string(temp_count++);
 
             if (first_symbol.data_type == SymbolDataType::STRING) {
@@ -270,11 +336,12 @@ std::any IRGenerator::visitAdditiveExpr(CompiScriptParser::AdditiveExprContext *
                 quadruplets.push_back({.op = "concat", .arg1 = arg1, .arg2 = arg2, .result = temp});
             } else {
                 auto op = ctx->children.at(op_index)->getText();
-                quadruplets.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
+                optimize.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
                 op_index += 2;
             }
 
             first_symbol.name = temp;
+            first_symbol.label = "";
             first_symbol.type = SymbolType::VARIABLE;
         }
         return makeAny(first_symbol);
@@ -289,15 +356,17 @@ std::any IRGenerator::visitMultiplicativeExpr(CompiScriptParser::MultiplicativeE
         for (int i = 1; i < ctx->unaryExpr().size(); i++) {
             auto second_symbol = castSymbol(visitUnaryExpr(ctx->unaryExpr().at(i)));
 
-            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.name;
-            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.name;
+            auto arg1 = (first_symbol.type == SymbolType::LITERAL) ? first_symbol.value : first_symbol.label + first_symbol.name;
+            auto arg2 = (second_symbol.type == SymbolType::LITERAL) ? second_symbol.value : second_symbol.label + second_symbol.name;
+
             auto temp = "t" + std::to_string(temp_count++);
 
             auto op = ctx->children.at(op_index)->getText();
-            quadruplets.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
+            optimize.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
             op_index += 2;
 
             first_symbol.name = temp;
+            first_symbol.label = "";
             first_symbol.type = SymbolType::VARIABLE;
         }
         return makeAny(first_symbol);
@@ -311,12 +380,14 @@ std::any IRGenerator::visitUnaryExpr(CompiScriptParser::UnaryExprContext *ctx) {
         auto op = ctx->getStart()->getText();
         auto symbol = castSymbol(visitUnaryExpr(unary));
 
-        auto arg = (symbol.type == SymbolType::LITERAL) ? symbol.value : symbol.name;
+        auto arg = (symbol.type == SymbolType::LITERAL) ? symbol.value : symbol.label + symbol.name;
         auto temp = "t" + std::to_string(temp_count++);
 
-        quadruplets.push_back({.op = op, .arg1 = arg, .result = temp});
+        optimize.push_back({.op = op, .arg1 = arg, .result = temp});
 
         symbol.name = temp;
+        symbol.label = "";
+        symbol.type = SymbolType::VARIABLE;
         return makeAny(symbol);
     }
 
@@ -336,33 +407,40 @@ std::any IRGenerator::visitLiteralExpr(CompiScriptParser::LiteralExprContext *ct
     Symbol new_symbol;
     new_symbol.value = ctx->getText();
     new_symbol.type = SymbolType::LITERAL;
-    new_symbol.size = 32; // TODO: Assign different sizes
     if (ctx->Literal() != nullptr) {
         auto literal = ctx->Literal()->getSymbol();
-        if (std::regex_match(literal->getText(), std::regex("[0-9]+"))) 
+        if (std::regex_match(literal->getText(), std::regex("[0-9]+"))) {
             new_symbol.data_type = SymbolDataType::INTEGER;
+            new_symbol.size = 4;
+        }
 
-        if (std::regex_match(literal->getText(), std::regex("\"([^\"\r\n])*\""))) 
+        if (std::regex_match(literal->getText(), std::regex("\"([^\"\r\n])*\""))) {
             new_symbol.data_type = SymbolDataType::STRING;
+            new_symbol.size = new_symbol.value.size() - 2;
+        }
 
 
     } else if (new_symbol.value == "true" || new_symbol.value == "false") {
         new_symbol.data_type = SymbolDataType::BOOLEAN;
+        new_symbol.size = 1;
     } else {
         new_symbol.data_type = SymbolDataType::NIL;
         new_symbol.value = "null";
+        new_symbol.size = 1;
     }
-
-
     return makeAny(new_symbol);
 }
 
 std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *ctx) {
-    return visitChildren(ctx);
+    auto atom = castSymbol(visit(ctx->primaryAtom()));
+    if (!ctx->suffixOp().empty()) {
+        // TODO
+    }
+    return atom;
 }
 
 std::any IRGenerator::visitIdentifierExpr(CompiScriptParser::IdentifierExprContext *ctx) {
-    return visitChildren(ctx);
+    return table->lookup(ctx->Identifier()->getText()).first;
 }
 
 std::any IRGenerator::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
