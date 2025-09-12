@@ -24,9 +24,9 @@ std::any SemanticChecker::visitStatement(CompiScriptParser::StatementContext *ct
         return visitReturnStatement(ctx->returnStatement());
     }
     if (ctx->block() != nullptr) {
-        table.enter();
+        table.addChildTable();
         visitBlock(ctx->block());
-        table.exit();
+        table.setParentToCurrent();
         return std::any();
     }
     return visitChildren(ctx);
@@ -99,7 +99,7 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
 
     if (ctx->typeAnnotation() != nullptr) {
         auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
-        new_symbol.label = symbol_type.label;
+        new_symbol.parent = symbol_type.parent;
         new_symbol.data_type = symbol_type.data_type;
         new_symbol.dimentions = symbol_type.dimentions;
     }
@@ -109,7 +109,7 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
         if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
             (new_symbol.data_type != initiallizer.data_type || 
             new_symbol.dimentions != initiallizer.dimentions ||
-            new_symbol.label != initiallizer.label)
+            new_symbol.parent != initiallizer.parent)
         ) {
             if (new_symbol.data_type != SymbolDataType::OBJECT) {
                 std::println(stderr, "Error in line {}: Variable '{}' not compatible with value of type '{}'.",
@@ -120,14 +120,14 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
             } else {
                 std::println(stderr, "Error in line {}: Variable '{}' not compatible with value of type '{}'.",
                              ctx->getStart()->getLine(), 
-                             new_symbol.label.c_str(),
-                             initiallizer.label.c_str());
+                             new_symbol.parent.c_str(),
+                             initiallizer.parent.c_str());
                 throw std::runtime_error("NON_MATCHING_TYPES");
 
             }
         }
 
-        new_symbol.label = initiallizer.label;
+        new_symbol.parent = initiallizer.parent;
         new_symbol.value = initiallizer.value;
         new_symbol.data_type = initiallizer.data_type;
         new_symbol.dimentions = initiallizer.dimentions;
@@ -160,7 +160,7 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
 
     if (ctx->typeAnnotation() != nullptr) {
         auto symbol_type = castSymbol(visitTypeAnnotation(ctx->typeAnnotation()));
-        new_symbol.label = symbol_type.label;
+        new_symbol.parent = symbol_type.parent;
         new_symbol.data_type = symbol_type.data_type;
         new_symbol.dimentions = symbol_type.dimentions;
     }
@@ -169,7 +169,7 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
     if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
         (new_symbol.data_type != expression.data_type || 
         new_symbol.dimentions != expression.dimentions ||
-        new_symbol.label != expression.label)
+        new_symbol.parent != expression.parent)
     ) {
         if (new_symbol.data_type != SymbolDataType::OBJECT) {
             std::println(stderr, "Error in line {}: Constant '{}' not compatible with value of type '{}'.",
@@ -180,13 +180,13 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
         } else {
             std::println(stderr, "Error in line {}: Constant '{}' not compatible with value of type '{}'.",
                          ctx->getStart()->getLine(), 
-                         new_symbol.label.c_str(),
-                         expression.label.c_str());
+                         new_symbol.parent.c_str(),
+                         expression.parent.c_str());
             throw std::runtime_error("NON_MATCHING_TYPES");
         }
     }
 
-    new_symbol.label = expression.label;
+    new_symbol.parent = expression.parent;
     new_symbol.value = expression.value;
     new_symbol.data_type = expression.data_type;
     new_symbol.dimentions = expression.dimentions;
@@ -223,7 +223,7 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
             throw std::runtime_error("CONSTANT_MODIFICATION");
         }
 
-        auto symbol_exists = table.get_property(symbol.label, name);
+        auto symbol_exists = table.get_property(symbol.parent, name);
         if (!symbol_exists.second) {
             std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
                              ctx->getStart()->getLine(),
@@ -245,7 +245,7 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
         }
 
         // prop_symbol.value = expr.value;
-        // table.set_property(symbol.label, name, prop_symbol);
+        // table.set_property(symbol.parent, name, prop_symbol);
         return makeAny(symbol);
     }
 
@@ -307,9 +307,9 @@ std::any SemanticChecker::visitIfStatement(CompiScriptParser::IfStatementContext
     }
 
     for (auto block :ctx->block()) {
-        table.enter();
+        table.addChildTable();
         visitBlock(block);
-        table.exit();
+        table.setParentToCurrent();
     }
 
     return std::any();
@@ -329,9 +329,9 @@ std::any SemanticChecker::visitWhileStatement(CompiScriptParser::WhileStatementC
     bool flag_set = (context & TableContext::WHILE) ? true: false;
     context = (TableContext)(context | TableContext::WHILE);
 
-    table.enter();
+    table.addChildTable();
     visitBlock(ctx->block());
-    table.exit();
+    table.setParentToCurrent();
 
     if (!flag_set)
         context = (TableContext)(context & ~TableContext::WHILE);
@@ -354,9 +354,9 @@ std::any SemanticChecker::visitDoWhileStatement(CompiScriptParser::DoWhileStatem
     bool flag_set = (context & TableContext::WHILE) ? true: false;
     context = (TableContext)(context | TableContext::WHILE);
 
-    table.enter();
+    table.addChildTable();
     visitBlock(ctx->block());
-    table.exit();
+    table.setParentToCurrent();
 
     if (!flag_set)
         context = (TableContext)(context & ~TableContext::WHILE);
@@ -368,7 +368,7 @@ std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementConte
     if (ctx->assignment() != nullptr) 
         visitAssignment(ctx->assignment());
 
-    table.enter();
+    table.addChildTable();
     if (ctx->variableDeclaration() != nullptr)
         visitVariableDeclaration(ctx->variableDeclaration());
 
@@ -391,7 +391,7 @@ std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementConte
     context = (TableContext)(context | TableContext::FOR);
 
     visitBlock(ctx->block());
-    table.exit();
+    table.setParentToCurrent();
 
     if (!flag_set)
         context = (TableContext)(context & ~TableContext::FOR);
@@ -409,7 +409,7 @@ std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatem
 
     Symbol new_symbol = {
         .name = ctx->Identifier()->getText(),
-        .label = iter_symbol.label,
+        .parent = iter_symbol.parent,
         .type = SymbolType::VARIABLE,
         .data_type = iter_symbol.data_type,
         .dimentions = iter_symbol.dimentions - 1,
@@ -418,9 +418,10 @@ std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatem
     bool flag_set = (context & TableContext::FOR) ? true: false;
     context = (TableContext)(context | TableContext::FOR);
 
-    table.enter({new_symbol});
+    table.addChildTable();
+    table.insert(new_symbol);
     visitBlock(ctx->block());
-    table.exit();
+    table.setParentToCurrent();
 
     if (!flag_set)
         context = (TableContext)(context & ~TableContext::FOR);
@@ -471,18 +472,19 @@ std::any SemanticChecker::visitReturnStatement(CompiScriptParser::ReturnStatemen
 }
 
 std::any SemanticChecker::visitTryCatchStatement(CompiScriptParser::TryCatchStatementContext *ctx) {
-    table.enter();
+    table.addChildTable();
     visitBlock(ctx->block().at(0));
-    table.exit();
+    table.setParentToCurrent();
 
     Symbol error_symbol = {
         .type = SymbolType::CONSTANT,
         .data_type = SymbolDataType::STRING,
     };
 
-    table.enter({error_symbol});
+    table.addChildTable();
+    table.insert(error_symbol);
     visitBlock(ctx->block().at(1));
-    table.exit();
+    table.setParentToCurrent();
 
     return std::any();
 }
@@ -522,22 +524,22 @@ std::any SemanticChecker::visitSwitchCase(CompiScriptParser::SwitchCaseContext *
         
     }
 
-    table.enter();
+    table.addChildTable();
 
     for (auto statement: ctx->statement())
     visitStatement(statement);
 
-    table.exit();
+    table.setParentToCurrent();
     return makeAny(case_symbol);
 }
 
 std::any SemanticChecker::visitDefaultCase(CompiScriptParser::DefaultCaseContext *ctx) {
-    table.enter();
+    table.addChildTable();
 
     for (auto statement: ctx->statement())
     visitStatement(statement);
 
-    table.exit();
+    table.setParentToCurrent();
     return std::any();
 }
 
@@ -553,10 +555,6 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
     }
 
     Symbol new_symbol = {.name = name, .type = SymbolType::FUNCTION };
-    if (ctx->parameters() != nullptr) {
-        auto symbol_params = castSymbol(visitParameters(ctx->parameters()));
-        new_symbol.arg_list = symbol_params.arg_list;
-    }
 
     if (ctx->type() != nullptr) {
         auto symbol_type = castSymbol(visitType(ctx->type()));
@@ -570,7 +568,15 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
 
     table.insert(new_symbol);
 
-    table.enter(new_symbol.arg_list);
+    table.addChildTable();
+
+    if (ctx->parameters() != nullptr) {
+        auto symbol_params = castSymbol(visitParameters(ctx->parameters()));
+        new_symbol.arg_list = symbol_params.arg_list;
+    }
+
+    table.insert(new_symbol.arg_list);
+    table.update(name, new_symbol);
 
     auto prev_context_name = context_name;
     context_name = name;
@@ -587,11 +593,12 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
         
     }
     new_symbol.definition = table.getCurrent();
-    table.update(name, new_symbol);
 
     if (!flag_set)
         context = (TableContext)(context & ~TableContext::FUNCTION);
-    table.exit();
+    table.setParentToCurrent();
+
+    table.update(name, new_symbol);
 
     context_name = prev_context_name;
 
@@ -619,7 +626,7 @@ std::any SemanticChecker::visitParameter(CompiScriptParser::ParameterContext *ct
 
 std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarationContext *ctx) {
     if (context & TableContext::CLASS) {
-        std::println(stderr, "Error: A class can't be defined within another class.",
+        std::println(stderr, "Error in line {}: A class can't be defined within another class.",
                              ctx->getStart()->getLine());
         throw std::runtime_error("INVALID_DECLARATION");
     } 
@@ -636,8 +643,8 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
 
     Symbol new_symbol = {.name = name, .type = SymbolType::CLASS, .data_type = SymbolDataType::NIL };
     if (ctx->Identifier().size() > 1) {
-        auto label = ctx->Identifier().at(1)->getText();
-        auto symbol_exists = table.lookup(label, false);
+        auto parent = ctx->Identifier().at(1)->getText();
+        auto symbol_exists = table.lookup(parent, false);
         if (!symbol_exists.second) {
             std::println(stderr, "Error in line {}: parent class '{}' does not exist.",
                              ctx->getStart()->getLine(),
@@ -645,13 +652,13 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
             throw std::runtime_error("UNDEFINED_ACCESS");
             
         }
-        new_symbol.label = label;
+        new_symbol.parent = parent;
         new_symbol.arg_list = symbol_exists.first.arg_list;
     }
 
     table.insert(new_symbol);
 
-    table.enter();
+    table.addChildTable();
     context = (TableContext)(context | TableContext::CLASS);
 
     new_symbol.definition = table.getCurrent();
@@ -659,7 +666,7 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
 
     Symbol symbol_self = {
         .name = "this", 
-        .label = name,
+        .parent = name,
         .type = SymbolType::VARIABLE, 
         .data_type = SymbolDataType::OBJECT, 
     };
@@ -675,7 +682,7 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
     }
 
     context = (TableContext)(context & ~TableContext::CLASS);
-    table.exit();
+    table.setParentToCurrent();
 
     return std::any();
 }
@@ -705,7 +712,7 @@ std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAss
     //     
     // }
     //
-    // auto symbol_exists = table.get_property(symbol.label, prop_name);
+    // auto symbol_exists = table.get_property(symbol.parent, prop_name);
     // if (!symbol_exists.second) {
     //     std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
     //                          ctx->getStart()->getLine(),
@@ -723,7 +730,7 @@ std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAss
     // }
     //
     // // prop_symbol.value = expr.value;
-    // // table.set_property(symbol.label, prop_name, prop_symbol);
+    // // table.set_property(symbol.parent, prop_name, prop_symbol);
     //
     // return makeAny(prop_symbol);
     return std::any();
@@ -941,21 +948,26 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
     Symbol new_symbol;
     new_symbol.value = ctx->getText();
     new_symbol.type = SymbolType::LITERAL;
-    new_symbol.size = 32; // TODO: Assign different sizes
     if (ctx->Literal() != nullptr) {
         auto literal = ctx->Literal()->getSymbol();
-        if (std::regex_match(literal->getText(), std::regex("[0-9]+"))) 
+        if (std::regex_match(literal->getText(), std::regex("[0-9]+"))) {
             new_symbol.data_type = SymbolDataType::INTEGER;
+            new_symbol.size = 4;
+        }
 
-        if (std::regex_match(literal->getText(), std::regex("\"([^\"\r\n])*\""))) 
+        if (std::regex_match(literal->getText(), std::regex("\"([^\"\r\n])*\""))) {
             new_symbol.data_type = SymbolDataType::STRING;
+            new_symbol.size = new_symbol.value.size() - 2;
+        }
 
 
     } else if (new_symbol.value == "true" || new_symbol.value == "false") {
         new_symbol.data_type = SymbolDataType::BOOLEAN;
+        new_symbol.size = 1;
     } else {
         new_symbol.data_type = SymbolDataType::NIL;
         new_symbol.value = "null";
+        new_symbol.size = 1;
     }
 
     return makeAny(new_symbol);
@@ -1000,8 +1012,8 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
             atom.dimentions--;
         }
         else
-        if (!atom.label.empty() && suffix.type == SymbolType::PROPERTY) {
-            auto prop_exists = table.get_property(atom.label, suffix.name);
+        if (!atom.parent.empty() && suffix.type == SymbolType::PROPERTY) {
+            auto prop_exists = table.get_property(atom.parent, suffix.name);
             if (!prop_exists.second) {
                 std::println(stderr, "Error in line {}: Property doesn't exist.",
                              ctx->getStart()->getLine());
@@ -1087,7 +1099,7 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
 
     auto new_symbol = Symbol{
         .name = name,
-        .label = class_symbol.name,
+        .parent = class_symbol.name,
         .data_type = SymbolDataType::OBJECT,
     };
     return makeAny(new_symbol);
@@ -1182,27 +1194,48 @@ std::any SemanticChecker::visitType(CompiScriptParser::TypeContext *ctx) {
 
 std::any SemanticChecker::visitBaseType(CompiScriptParser::BaseTypeContext *ctx) {
     Symbol symbol_type;
-    symbol_type.data_type = getSymbolDataType(ctx->getText());
-    if (symbol_type.data_type == SymbolDataType::OBJECT) { 
-        auto symbol_exists = table.lookup(ctx->getText(), false);
-        if (!symbol_exists.second) {
-            std::println(stderr, "Error in line {}: '{}' is not defined",
+    switch (getSymbolDataType(ctx->getText())) {
+        case SymbolDataType::STRING:
+            symbol_type.data_type = SymbolDataType::STRING;
+            symbol_type.size = 4;
+            break;
+        case SymbolDataType::INTEGER:
+            symbol_type.data_type = SymbolDataType::INTEGER;
+            symbol_type.size = 4;
+            break;
+        case SymbolDataType::NIL:
+            symbol_type.data_type = SymbolDataType::NIL;
+            symbol_type.size = 1;
+            break;
+        case SymbolDataType::BOOLEAN:
+            symbol_type.data_type = SymbolDataType::BOOLEAN;
+            symbol_type.size = 1;
+            break;
+        case SymbolDataType::OBJECT: {
+            auto symbol_exists = table.lookup(ctx->getText(), false);
+            if (!symbol_exists.second) {
+                std::println(stderr, "Error in line {}: '{}' is not defined",
                              ctx->getStart()->getLine(),
-                         ctx->getText().c_str());
-            throw std::runtime_error("UNDEFINED_ACCESS");
-            
-        }
+                             ctx->getText().c_str());
+                throw std::runtime_error("UNDEFINED_ACCESS");
 
-        auto class_symbol = symbol_exists.first;
-        if (class_symbol.type != SymbolType::CLASS) {
-            std::println(stderr, "Error in line {}: '{}' is not a class",
+            }
+
+            auto class_symbol = symbol_exists.first;
+            if (class_symbol.type != SymbolType::CLASS) {
+                std::println(stderr, "Error in line {}: '{}' is not a class",
                              ctx->getStart()->getLine(),
-                         ctx->getText().c_str());
-            throw std::runtime_error("NON_MATCHING_TYPES");
-            
-        }
+                             ctx->getText().c_str());
+                throw std::runtime_error("NON_MATCHING_TYPES");
 
-        symbol_type.label = class_symbol.name;
+            }
+
+            symbol_type.data_type = SymbolDataType::OBJECT;
+            symbol_type.parent = class_symbol.name;
+        }
+            break;
+        default:
+            break;
     }
     return makeAny(symbol_type);
 }

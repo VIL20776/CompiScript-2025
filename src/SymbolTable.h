@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <stack>
 #include <any>
 
 enum class SymbolType: int {
@@ -28,9 +29,10 @@ enum class SymbolDataType: int {
 struct Table;
 /*
 name - Identificacion
-parent - Etiqueta identificadora:
+parent - Identificacion de clase:
     Si es VARIABLE de tipo de dato OBJECT, indica de que clase es instancia.
     Si es CLASS, indica de que clase hereda
+label - Etiqueta de symbolo, usada en la fase de CI
 type - Tipo de simbolo
 data_type - Tipo de dato. 
 value - Valor contenido en la variable.
@@ -44,6 +46,7 @@ offset - ubicacion en memoria
 */
 struct Symbol {
     std::string name;
+    std::string parent;
     std::string label;
     SymbolType type;
     SymbolDataType data_type; 
@@ -59,6 +62,7 @@ struct Table {
     std::weak_ptr<Table> parent;
     std::vector<std::shared_ptr<Table>> children;
     std::unordered_map<std::string, Symbol> table;
+    int id;
 };
 
 std::any makeAny(Symbol symbol);
@@ -75,12 +79,15 @@ private:
 
     std::shared_ptr<Table> global;
     std::weak_ptr<Table> current;
+    std::stack<int> indexes;
+    int table_count;
     
 public:
     SymbolTable();
     ~SymbolTable();
 
     void insert(const Symbol &symbol);
+    void insert(const std::vector<Symbol> &symbols);
 
     std::pair<const Symbol&, bool> lookup(const std::string &symbol_name, bool local = true);
 
@@ -90,14 +97,18 @@ public:
 
     bool update(const std::string &symbol_name, const Symbol &symbol);
 
-    void enter(const std::vector<Symbol> &initial_symbols = {});
+    void addChildTable();
+    void setParentToCurrent();
+    void setGlobalToCurrent();
+
+    void enter();
     void exit();
 
     std::weak_ptr<Table> getCurrent() {return current;}
 
     void printTables();
 
-    void printTable(const Table& table, const std::string tabs, int& id);
+    void printTable(const Table& table, const std::string tabs);
 
     void printSymbol(const Symbol& symbol);
 };

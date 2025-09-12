@@ -38,6 +38,8 @@ SymbolTable::SymbolTable()
 {
     global = std::make_shared<Table>();
     current = global;
+    table_count = 0;
+    global->id = table_count++;
 }
 
 SymbolTable::~SymbolTable()
@@ -45,31 +47,19 @@ SymbolTable::~SymbolTable()
 }
 
 void SymbolTable::insert(const Symbol &symbol) {
-    current.lock()->table.emplace(symbol.name, symbol);
+    auto new_symbol = symbol;
+    new_symbol.label = "L" + std::to_string(current.lock()->id) + "_";
+    current.lock()->table.emplace(symbol.name, new_symbol);
 }
 
-// std::vector<Symbol>
-// SymbolTable::find_range(const std::string &label) {
-    // std::vector<Symbol> symbols;
-    // for (auto &scope: scopes)
-    // for (auto &kv : scope) 
-    // {
-    //     auto &key = kv.first;
-    //     if (key.second == label)
-    //         symbols.push_back(kv.second);
-    // }
-    //
-    // return symbols;
-// }
+void SymbolTable::insert(const std::vector<Symbol> &symbols) {
+    for (auto symbol: symbols)
+        insert(symbol);
+}
 
 std::pair<const Symbol&, bool>
 SymbolTable::lookup(const std::string &symbol_name, bool local) {
     // Try finding in current scope;
-
-    if (!current.lock()) {
-        std::println("current is null");
-    }
-
     auto exists = current.lock()->table.contains(symbol_name);
     if (current.lock()->table.contains(symbol_name))
         return {current.lock()->table.at(symbol_name), true};
@@ -89,9 +79,9 @@ SymbolTable::lookup(const std::string &symbol_name, bool local) {
 }
 
 std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symbol_type, const std::string &property_name) {
-    std::string label = symbol_type;
+    std::string parent = symbol_type;
     do {
-        auto symbol_exists = lookup(label, false);
+        auto symbol_exists = lookup(parent, false);
         if (!symbol_exists.second) 
             return symbol_exists;
 
@@ -103,9 +93,9 @@ std::pair<const Symbol&, bool> SymbolTable::get_property(const std::string &symb
         if (class_table->table.contains(property_name))
             return {class_table->table.at(property_name), true};
 
-        label = symbol.label;
+        parent = symbol.parent;
     }
-    while (!label.empty());
+    while (!parent.empty());
         
 
     return {{}, false};
@@ -151,40 +141,53 @@ bool SymbolTable::update(const std::string &symbol_name, const Symbol &symbol) {
     return false;
 }
 
-void SymbolTable::enter(const std::vector<Symbol> &initial_symbols) {
+void SymbolTable::addChildTable() {
     auto new_scope = std::make_shared<Table>();
-    for (auto symbol: initial_symbols) 
-        new_scope->table.insert_or_assign(symbol.name, symbol);
-
     current.lock()->children.push_back(new_scope);
     new_scope->parent = current.lock();
     current = new_scope;
+    current.lock()->id = table_count++;
 }
 
-void SymbolTable::exit() {
+void SymbolTable::setParentToCurrent() {
     current = current.lock()->parent.lock();
 }
 
-void SymbolTable::printTables() {
-    int id = 0;
-    printTable(*global.get(), "", id);
+void SymbolTable::setGlobalToCurrent() {
+    current = global;
 }
 
-void SymbolTable::printTable(const Table& table, const std::string tabs, int& id) {
-    std::println("{}Table {}:", tabs, std::to_string(id));
+void SymbolTable::enter() {
+    int index = indexes.top();
+    current = current.lock()->children.at(index);
+    indexes.push(0);
+}
+
+void SymbolTable::exit() {
+    setParentToCurrent();
+    indexes.pop();
+    indexes.top()++;
+}
+
+void SymbolTable::printTables() {
+    printTable(*global.get(), "");
+}
+
+void SymbolTable::printTable(const Table& table, const std::string tabs) {
+    std::println("{}Table {}:", tabs, std::to_string(table.id));
     for (auto name_symbol: table.table) {
         std::print("{}", tabs.c_str());
         printSymbol(name_symbol.second);
     }
 
     for (auto t: table.children) {
-        printTable(*t.get(), tabs + "\t", ++id);
+        printTable(*t.get(), tabs + "\t");
     }
 }
 
 void SymbolTable::printSymbol(const Symbol& symbol) {
     std::print("name=({}) ", symbol.name.c_str());
-    std::print("label=({}) ", symbol.label.c_str());
+    std::print("parent=({}) ", symbol.parent.c_str());
 
     std::string symbol_type;
     switch (symbol.type) {
