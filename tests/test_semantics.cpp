@@ -160,19 +160,19 @@ let nota = notas[0];
         auto notas = table.lookup("notas").first;
         REQUIRE(table.lookup("notas").second);
         REQUIRE(notas.data_type == SymbolDataType::INTEGER);
-        REQUIRE(notas.size == 96);
+        REQUIRE(notas.size == 12);
         REQUIRE(notas.dimentions == 1);
 
         auto lista = table.lookup("lista").first;
         REQUIRE(table.lookup("lista").second);
         REQUIRE(lista.data_type == SymbolDataType::INTEGER);
-        REQUIRE(lista.size == 96);
+        REQUIRE(lista.size == 12);
         REQUIRE(lista.dimentions == 1);
 
         auto matriz = table.lookup("matriz").first;
         REQUIRE(table.lookup("matriz").second);
         REQUIRE(matriz.data_type == SymbolDataType::INTEGER);
-        REQUIRE(matriz.size == 128);
+        REQUIRE(matriz.size == 16);
         REQUIRE(matriz.dimentions == 2);
     }
 
@@ -221,21 +221,21 @@ let perro: Perro = new Perro("Firulais");
     SECTION("Class declaration with inheritance") {
         auto perro = table.lookup("Perro").first;
         REQUIRE(table.lookup("Perro").second);
-        REQUIRE(perro.label == "Animal");
+        REQUIRE(perro.parent == "Animal");
         REQUIRE(!perro.arg_list.empty());
     }
 
     SECTION("Object declaration") {
         auto animal = table.lookup("animal").first;
         REQUIRE(table.lookup("animal").second);
-        REQUIRE(animal.label == "Animal");
-        REQUIRE(table.get_property(animal.label, "nombre").second);
+        REQUIRE(animal.parent == "Animal");
+        REQUIRE(table.get_property(animal.parent, "nombre").second);
 
         auto perro = table.lookup("perro").first;
         REQUIRE(table.lookup("perro").second);
-        REQUIRE(perro.label == "Perro");
-        REQUIRE(table.get_property(perro.label, "hablar").second);
-        REQUIRE(table.get_property(perro.label, "nombre").second);
+        REQUIRE(perro.parent == "Perro");
+        REQUIRE(table.get_property(perro.parent, "hablar").second);
+        REQUIRE(table.get_property(perro.parent, "nombre").second);
 
     }
 }
