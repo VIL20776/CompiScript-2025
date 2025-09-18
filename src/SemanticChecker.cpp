@@ -134,6 +134,11 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
         new_symbol.size = initiallizer.size;
     }
 
+    if (context == CLASS) {
+        new_symbol.offset = class_size;
+        class_size += new_symbol.size;
+    }
+
     if (new_symbol.data_type == SymbolDataType::UNDEFINED) {
         std::println(stderr, "Error in line {}: Variables must have a type defined.",
                      ctx->getStart()->getLine());
@@ -191,6 +196,11 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
     new_symbol.data_type = expression.data_type;
     new_symbol.dimentions = expression.dimentions;
     new_symbol.size = expression.size;
+
+    if (context == CLASS) {
+        new_symbol.offset = class_size;
+        class_size += new_symbol.size;
+    }
 
     table.insert(new_symbol);
 
@@ -577,6 +587,9 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
 
     table.insert(new_symbol.arg_list);
     table.update(name, new_symbol);
+ 
+    for (auto &arg: new_symbol.arg_list)
+        arg = table.lookup(arg.name).first;
 
     auto prev_context_name = context_name;
     context_name = name;
@@ -673,16 +686,21 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
     table.insert(symbol_self);
 
     for (auto member: ctx->classMember())
-    visitClassMember(member);
+        visitClassMember(member);
 
     if (table.lookup("constructor").second) {
         auto constructor = table.lookup("constructor").first;
         new_symbol.arg_list = constructor.arg_list;
-        table.update(name, new_symbol);
     }
+    
+    new_symbol.size = symbol_self.size = class_size;
+
+    table.update(name, new_symbol);
+    table.update(symbol_self.name, symbol_self);
 
     context = (TableContext)(context & ~TableContext::CLASS);
     table.setParentToCurrent();
+    class_size = 0;
 
     return std::any();
 }
@@ -1101,6 +1119,7 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
         .name = name,
         .parent = class_symbol.name,
         .data_type = SymbolDataType::OBJECT,
+        .size = class_symbol.size,
     };
     return makeAny(new_symbol);
 }
@@ -1232,6 +1251,7 @@ std::any SemanticChecker::visitBaseType(CompiScriptParser::BaseTypeContext *ctx)
 
             symbol_type.data_type = SymbolDataType::OBJECT;
             symbol_type.parent = class_symbol.name;
+            symbol_type.size = class_symbol.size;
         }
             break;
         default:

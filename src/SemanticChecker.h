@@ -20,7 +20,7 @@ private:
 
     std::string context_name;
     TableContext context;
-
+    int class_size;
 
 public:
     SemanticChecker();
