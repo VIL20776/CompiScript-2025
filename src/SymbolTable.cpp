@@ -40,6 +40,7 @@ SymbolTable::SymbolTable()
     current = global;
     table_count = 0;
     global->id = table_count++;
+    indexes.push(0);
 }
 
 SymbolTable::~SymbolTable()
@@ -123,7 +124,9 @@ bool SymbolTable::set_property(const std::string &symbol_type, const std::string
 bool SymbolTable::update(const std::string &symbol_name, const Symbol &symbol) {
     // Try finding in current scope
     if (current.lock()->table.contains(symbol_name)) {
+        auto label = current.lock()->table.at(symbol_name).label;
         current.lock()->table.insert_or_assign(symbol_name, symbol);
+        current.lock()->table.at(symbol_name).label = label;
         return true;
     }
 
@@ -131,7 +134,9 @@ bool SymbolTable::update(const std::string &symbol_name, const Symbol &symbol) {
     auto parent = current.lock()->parent.lock();
     while (parent) {
         if (parent->table.contains(symbol_name)) {
+            auto label = parent->table.at(symbol_name).label;
             parent->table.insert_or_assign(symbol_name, symbol);
+            parent->table.at(symbol_name).label = label;
             return true;
         }
 

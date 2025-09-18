@@ -93,7 +93,7 @@ public:
 
     std::pair<const Symbol&, bool> get_property(const std::string &symbol_name, const std::string &property_name);
 
-    bool set_property(const std::string &symbol_name, const std::string &property_name, const Symbol &symbol);
+    bool set_property(const std::string &symbol_type, const std::string &property_name, const Symbol &symbol);
 
     bool update(const std::string &symbol_name, const Symbol &symbol);
 
