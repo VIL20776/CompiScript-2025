@@ -10,12 +10,11 @@ using namespace CompiScript;
 
 
 TEST_CASE("Aritmetic and logic operations generation", "[Operation gen]") {
-    SemanticChecker checker {};
     auto generated_tac = test_ir_gen(R"(
 let x = 5 + 3 * 2;
 let y = !(x < 10 || x > 20);
 let z = (1 + 2) * 3;
-                )", &checker);
+                )");
 
     REQUIRE(R"(t0 = * 3 2
 t1 = + 5 t0
@@ -30,4 +29,20 @@ t1 = * t0 3
 L0_z =  t1 
 )" == generated_tac);
 
+}
+
+TEST_CASE("Function code generation", "[Function gen]") {
+    auto generated_tac = test_ir_gen(R"(
+function saludar(nombre: string): string {
+  return "Hola " + nombre;
+}
+                )");
+
+    REQUIRE(R"(begin L0_saludar 
+L1_nombre = param  
+t0 = concat "Hola " L1_nombre
+return t0 
+end L0_saludar 
+)" == generated_tac);
+    
 }
