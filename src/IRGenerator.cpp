@@ -13,7 +13,8 @@ IRGenerator::IRGenerator(SymbolTable* table):
     table(table), 
     optimize(), 
     quadruplets(), 
-    temp_count(0) {}
+    temp_count(0),
+    class_def(false) {}
 
 IRGenerator::~IRGenerator() {}
 
@@ -144,7 +145,7 @@ std::any IRGenerator::visitReturnStatement(CompiScriptParser::ReturnStatementCon
     auto ret = castSymbol(visitExpression(ctx->expression()));
     auto arg = (ret.type == SymbolType::LITERAL) ? ret.value : ret.label + ret.name;
     quadruplets.push_back({.op = "return", .arg1 = ret.label + ret.name});
-    return visitChildren(ctx);
+    return std::any();
 }
 
 std::any IRGenerator::visitTryCatchStatement(CompiScriptParser::TryCatchStatementContext *ctx) {
@@ -167,13 +168,21 @@ std::any IRGenerator::visitFunctionDeclaration(CompiScriptParser::FunctionDeclar
     auto function = table->lookup(ctx->Identifier()->getText()).first;
 
     quadruplets.push_back({.op = "begin", .arg1 = function.label + function.name});
+    if (class_def) 
+        quadruplets.push_back({.op = "param", .result = function.label + "this"});
+    
     for (auto arg: function.arg_list) 
         quadruplets.push_back({.op = "param", .result = arg.label + arg.name});
+
+    if (class_def && function.name == "constructor") {
+        auto self = table->lookup("this").first;
+        quadruplets.push_back({.op = "alloc", .arg1 = std::to_string(self.size), .result = "this"});
+    }
     
     visitBlock(ctx->block());
 
     quadruplets.push_back({.op = "end", .arg1 = function.label + function.name});
-    return visitChildren(ctx);
+    return std::any();
 }
 
 std::any IRGenerator::visitParameters(CompiScriptParser::ParametersContext *ctx) {
@@ -185,11 +194,21 @@ std::any IRGenerator::visitParameter(CompiScriptParser::ParameterContext *ctx) {
 }
 
 std::any IRGenerator::visitClassDeclaration(CompiScriptParser::ClassDeclarationContext *ctx) {
-    return visitChildren(ctx);
+    class_def = true;
+    table->enter();
+    for (auto member: ctx->classMember())
+        visitClassMember(member);
+    table->exit();
+    class_def = false;
+    
+    return std::any();
 }
 
 std::any IRGenerator::visitClassMember(CompiScriptParser::ClassMemberContext *ctx) {
-    return visitChildren(ctx);
+    if (ctx->functionDeclaration())
+        visitFunctionDeclaration(ctx->functionDeclaration());
+
+    return std::any();
 }
 
 std::any IRGenerator::visitExpression(CompiScriptParser::ExpressionContext *ctx) {

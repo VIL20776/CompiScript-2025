@@ -22,6 +22,7 @@ private:
     SymbolTable* table;
     std::vector<Quad> quadruplets;
     std::vector<Quad> optimize;
+    bool class_def;
     int temp_count;
 
     void optimizeQuadruplets();
