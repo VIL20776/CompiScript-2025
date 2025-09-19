@@ -144,7 +144,8 @@ std::any IRGenerator::visitContinueStatement(CompiScriptParser::ContinueStatemen
 std::any IRGenerator::visitReturnStatement(CompiScriptParser::ReturnStatementContext *ctx) {
     auto ret = castSymbol(visitExpression(ctx->expression()));
     auto arg = (ret.type == SymbolType::LITERAL) ? ret.value : ret.label + ret.name;
-    quadruplets.push_back({.op = "return", .arg1 = ret.label + ret.name});
+    optimize.push_back({.op = "return", .arg1 = arg});
+    optimizeQuadruplets();
     return std::any();
 }
 
@@ -452,10 +453,33 @@ std::any IRGenerator::visitLiteralExpr(CompiScriptParser::LiteralExprContext *ct
 
 std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *ctx) {
     auto atom = castSymbol(visit(ctx->primaryAtom()));
-    if (!ctx->suffixOp().empty()) {
-        // TODO
+    for (auto suffixOp: ctx->suffixOp()) {
+        auto suffix = castSymbol(visit(suffixOp));
+        if (atom.type == SymbolType::FUNCTION && suffix.type == SymbolType::ARGUMENT) {
+            for (auto it = suffix.arg_list.rbegin(); it != suffix.arg_list.rend(); it++) {
+                auto arg = (it->type == SymbolType::LITERAL) ? it->value : it->label + it->name;
+                optimize.push_back({.op = "push", .arg1 = arg});
+            }
+             
+            if (suffix.data_type == SymbolDataType::NIL)
+                optimize.push_back({.op = "call", .arg1 = atom.label + atom.name});
+            else
+                optimize.push_back({.op = "call", .arg1 = atom.label + atom.name, .result = "ret"});
+
+            atom.name = "ret";
+            atom.label = "";
+            atom.type = SymbolType::VARIABLE;
+        }
+        else
+        if (atom.dimentions > 0 && suffix.data_type == SymbolDataType::INTEGER) {
+
+        }
+        else
+        if (!atom.parent.empty() && suffix.type == SymbolType::PROPERTY) {
+
+        }
     }
-    return atom;
+    return makeAny(atom);
 }
 
 std::any IRGenerator::visitIdentifierExpr(CompiScriptParser::IdentifierExprContext *ctx) {
@@ -471,7 +495,10 @@ std::any IRGenerator::visitThisExpr(CompiScriptParser::ThisExprContext *ctx) {
 }
 
 std::any IRGenerator::visitCallExpr(CompiScriptParser::CallExprContext *ctx) {
-    return visitChildren(ctx);
+    if (ctx->arguments() == nullptr)
+        return Symbol({.type = SymbolType::ARGUMENT});
+
+    return visitArguments(ctx->arguments());
 }
 
 std::any IRGenerator::visitIndexExpr(CompiScriptParser::IndexExprContext *ctx) {
@@ -483,7 +510,11 @@ std::any IRGenerator::visitPropertyAccessExpr(CompiScriptParser::PropertyAccessE
 }
 
 std::any IRGenerator::visitArguments(CompiScriptParser::ArgumentsContext *ctx) {
-    return visitChildren(ctx);
+    Symbol symbol_arguments = {.type = SymbolType::ARGUMENT};
+    for (auto expr: ctx->expression()) {
+        symbol_arguments.arg_list.push_back(castSymbol(visitExpression(expr)));
+    }
+    return makeAny(symbol_arguments);
 }
 
 std::any IRGenerator::visitArrayLiteral(CompiScriptParser::ArrayLiteralContext *ctx) {

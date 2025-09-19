@@ -36,6 +36,15 @@ TEST_CASE("Function code generation", "[Function gen]") {
 function saludar(nombre: string): string {
   return "Hola " + nombre;
 }
+
+let mensaje = saludar("Mundo");
+
+function crearContador(): integer {
+  function siguiente(): integer {
+    return 1;
+  }
+  return siguiente();
+}
                 )");
 
     REQUIRE(R"(begin L0_saludar 
@@ -43,6 +52,16 @@ L1_nombre = param
 t0 = concat "Hola " L1_nombre
 return t0 
 end L0_saludar 
+push "Mundo" 
+ret = call L0_saludar 
+L0_mensaje =  ret 
+begin L0_crearContador 
+begin L2_siguiente 
+return 1 
+end L2_siguiente 
+ret = call L2_siguiente 
+return ret 
+end L0_crearContador 
 )" == generated_tac);
     
 }
