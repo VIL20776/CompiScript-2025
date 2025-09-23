@@ -108,7 +108,7 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
         auto initiallizer = castSymbol(visitInitializer(ctx->initializer()));
         if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
             (new_symbol.data_type != initiallizer.data_type || 
-            new_symbol.dimentions != initiallizer.dimentions ||
+            new_symbol.dimentions.size() != initiallizer.dimentions.size() ||
             new_symbol.parent != initiallizer.parent)
         ) {
             if (new_symbol.data_type != SymbolDataType::OBJECT) {
@@ -173,7 +173,7 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
     auto expression = castSymbol(visitExpression(ctx->expression()));
     if (new_symbol.data_type != SymbolDataType::UNDEFINED && 
         (new_symbol.data_type != expression.data_type || 
-        new_symbol.dimentions != expression.dimentions ||
+        new_symbol.dimentions.size() != expression.dimentions.size() ||
         new_symbol.parent != expression.parent)
     ) {
         if (new_symbol.data_type != SymbolDataType::OBJECT) {
@@ -411,7 +411,7 @@ std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementConte
 
 std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatementContext *ctx) {
     auto iter_symbol = castSymbol(visitExpression(ctx->expression()));
-    if (iter_symbol.dimentions == 0) {
+    if (iter_symbol.dimentions.empty()) {
         std::println(stderr, "Error in line {}: For-each loop can't iterate over non array type.",
                              ctx->getStart()->getLine());
         throw std::runtime_error("INVALID_TYPE");
@@ -422,7 +422,7 @@ std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatem
         .parent = iter_symbol.parent,
         .type = SymbolType::VARIABLE,
         .data_type = iter_symbol.data_type,
-        .dimentions = iter_symbol.dimentions - 1,
+        .dimentions = std::vector(iter_symbol.dimentions.begin(), iter_symbol.dimentions.end() - 1),
     };
 
     bool flag_set = (context & TableContext::FOR) ? true: false;
@@ -569,7 +569,7 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
     if (ctx->type() != nullptr) {
         auto symbol_type = castSymbol(visitType(ctx->type()));
         new_symbol.data_type = symbol_type.data_type;
-        if (symbol_type.dimentions > 0) {
+        if (!symbol_type.dimentions.empty()) {
             new_symbol.dimentions = symbol_type.dimentions;
         }
     } else {
@@ -1026,8 +1026,8 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
             }
         }
         else
-        if (atom.dimentions > 0 && suffix.data_type == SymbolDataType::INTEGER) {
-            atom.dimentions--;
+        if (!atom.dimentions.empty() && suffix.data_type == SymbolDataType::INTEGER) {
+            atom.dimentions = std::vector(atom.dimentions.begin(), atom.dimentions.end() - 1);
         }
         else
         if (!atom.parent.empty() && suffix.type == SymbolType::PROPERTY) {
@@ -1197,7 +1197,7 @@ std::any SemanticChecker::visitArrayLiteral(CompiScriptParser::ArrayLiteralConte
         array_symbol.size += value_symbol.size; 
     }
 
-    array_symbol.dimentions++;
+    array_symbol.dimentions.push_back(ctx->expression().size());
     return makeAny(array_symbol);
 }
 
@@ -1206,7 +1206,7 @@ std::any SemanticChecker::visitType(CompiScriptParser::TypeContext *ctx) {
     auto token_string = ctx->getText();
     while (token_string.ends_with("[]")) {
         token_string.erase(token_string.length() - 2);
-        symbol_type.dimentions++;
+        symbol_type.dimentions.push_back(0);
     }
     return makeAny(symbol_type);
 }

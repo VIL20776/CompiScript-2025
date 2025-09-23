@@ -53,8 +53,8 @@ struct Symbol {
     std::string value;
     std::vector<Symbol> arg_list;
     std::weak_ptr<Table> definition;
+    std::vector<int> dimentions;
     int size = 0;
-    int dimentions = 0;
     int offset = 0;
 };
 

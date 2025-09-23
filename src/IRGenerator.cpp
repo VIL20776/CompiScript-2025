@@ -1,3 +1,4 @@
+#include <sstream>
 #include <string>
 #include <regex>
 #include <any>
@@ -59,12 +60,48 @@ std::any IRGenerator::visitBlock(CompiScriptParser::BlockContext *ctx) {
 }
 
 std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclarationContext *ctx) {
-    auto target = table->lookup(ctx->Identifier()->getText()).first;
-    auto source = castSymbol(visitInitializer(ctx->initializer()));
-    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
+    auto dest = table->lookup(ctx->Identifier()->getText()).first;
+    if (dest.value.empty()) {
+        auto source = castSymbol(visitInitializer(ctx->initializer()));
+        auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
 
-    optimize.push_back({.arg1 = arg, .result = target.label + target.name});
-    optimizeQuadruplets();
+        optimize.push_back({.arg1 = arg, .result = dest.label + dest.name});
+        optimizeQuadruplets();
+    } else {
+        if (!dest.dimentions.empty()) {
+            quadruplets.push_back({.op = "alloc", .arg1 = std::to_string(dest.size), .result = dest.label + dest.name});
+            std::stringstream value_stream (dest.value);
+            std::string value;
+            int offset = 0;
+            int type_size;
+            switch (dest.data_type) {
+                case SymbolDataType::STRING:
+                case SymbolDataType::INTEGER:
+                    type_size = 4;
+                    break;
+                case SymbolDataType::BOOLEAN:
+                case SymbolDataType::NIL:
+                    type_size = 1;
+                    break;
+                case SymbolDataType::OBJECT: {
+                    auto class_symbol = table->lookup(dest.parent).first;
+                    type_size = class_symbol.size;
+                }
+                    break;
+                default:
+                    type_size = 0;
+                    break;
+            }
+
+            while(std::getline(value_stream, value, ';')) {
+                if (value.empty()) continue;
+
+                quadruplets.push_back({.op = "+", .arg1 = dest.label + dest.name, .arg2 = std::to_string(offset), .result = "i"});
+                quadruplets.push_back({.arg1 = value, .result = "i*"});
+                offset += type_size;
+            }
+        } else {}
+    }
 
     temp_count = 0;
     return std::any();
@@ -79,7 +116,7 @@ std::any IRGenerator::visitConstantDeclaration(CompiScriptParser::ConstantDeclar
     optimizeQuadruplets();
 
     temp_count = 0;
-    return visitChildren(ctx);
+    return std::any();
 }
 
 std::any IRGenerator::visitTypeAnnotation(CompiScriptParser::TypeAnnotationContext *ctx) {
@@ -471,7 +508,7 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             atom.type = SymbolType::VARIABLE;
         }
         else
-        if (atom.dimentions > 0 && suffix.data_type == SymbolDataType::INTEGER) {
+        if (!atom.dimentions.size() && suffix.data_type == SymbolDataType::INTEGER) {
 
         }
         else

@@ -161,26 +161,26 @@ let nota = notas[0];
         REQUIRE(table.lookup("notas").second);
         REQUIRE(notas.data_type == SymbolDataType::INTEGER);
         REQUIRE(notas.size == 12);
-        REQUIRE(notas.dimentions == 1);
+        REQUIRE(notas.dimentions.size() == 1);
 
         auto lista = table.lookup("lista").first;
         REQUIRE(table.lookup("lista").second);
         REQUIRE(lista.data_type == SymbolDataType::INTEGER);
         REQUIRE(lista.size == 12);
-        REQUIRE(lista.dimentions == 1);
+        REQUIRE(lista.dimentions.size() == 1);
 
         auto matriz = table.lookup("matriz").first;
         REQUIRE(table.lookup("matriz").second);
         REQUIRE(matriz.data_type == SymbolDataType::INTEGER);
         REQUIRE(matriz.size == 16);
-        REQUIRE(matriz.dimentions == 2);
+        REQUIRE(matriz.dimentions.size() == 2);
     }
 
     SECTION("Checking array access") {
         auto nota = table.lookup("nota").first;
         REQUIRE(table.lookup("nota").second);
         REQUIRE(nota.data_type == SymbolDataType::INTEGER);
-        REQUIRE(nota.dimentions == 0);
+        REQUIRE(nota.dimentions.size() == 0);
     }
 
 }

@@ -249,7 +249,7 @@ void SymbolTable::printSymbol(const Symbol& symbol) {
         std::print("{} ",arg.name);
     }
     std::print(") ");
-    std::print("dimentions=({}) ",std::to_string(symbol.dimentions).c_str());
+    std::print("dimentions=({}) ",std::to_string(symbol.dimentions.size()).c_str());
     std::print("size=({}) ",std::to_string(symbol.size).c_str());
     std::print("offset=({})\n",std::to_string(symbol.offset).c_str());
 

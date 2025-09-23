@@ -65,3 +65,18 @@ end L0_crearContador
 )" == generated_tac);
     
 }
+
+TEST_CASE("Array code generation", "[Array gen]") {
+    auto generated_tac = test_ir_gen(R"(
+let lista = [1, 2, 3];
+                )");
+
+    REQUIRE(R"(L0_lista = alloc 12 
+i = + L0_lista 0
+i* =  1 
+i = + L0_lista 4
+i* =  2 
+i = + L0_lista 8
+i* =  3 
+)" == generated_tac);
+}
