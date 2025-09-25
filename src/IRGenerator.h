@@ -33,6 +33,8 @@ public:
 
     std::string getTAC();
 
+    int getSymbolSize(Symbol symbol);
+
     std::any visitProgram(CompiScriptParser::ProgramContext *ctx); 
 
 

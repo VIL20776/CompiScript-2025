@@ -31,6 +31,23 @@ void IRGenerator::optimizeQuadruplets() {
     optimize.clear();
 }
 
+int IRGenerator::getSymbolSize(Symbol symbol) {
+    switch (symbol.data_type) {
+        case SymbolDataType::STRING:
+        case SymbolDataType::INTEGER:
+            return 4;
+        case SymbolDataType::BOOLEAN:
+        case SymbolDataType::NIL:
+            return 1;
+        case SymbolDataType::OBJECT: {
+            auto class_symbol = table->lookup(symbol.parent).first;
+            return class_symbol.size;
+        }
+        default:
+            return 0;
+    }
+}
+
 std::string IRGenerator::getTAC() {
     std::string tac;
     for (auto quad: quadruplets) {
@@ -67,31 +84,14 @@ std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclar
 
         optimize.push_back({.arg1 = arg, .result = dest.label + dest.name});
         optimizeQuadruplets();
+        temp_count = 0;
     } else {
         if (!dest.dimentions.empty()) {
             quadruplets.push_back({.op = "alloc", .arg1 = std::to_string(dest.size), .result = dest.label + dest.name});
             std::stringstream value_stream (dest.value);
             std::string value;
             int offset = 0;
-            int type_size;
-            switch (dest.data_type) {
-                case SymbolDataType::STRING:
-                case SymbolDataType::INTEGER:
-                    type_size = 4;
-                    break;
-                case SymbolDataType::BOOLEAN:
-                case SymbolDataType::NIL:
-                    type_size = 1;
-                    break;
-                case SymbolDataType::OBJECT: {
-                    auto class_symbol = table->lookup(dest.parent).first;
-                    type_size = class_symbol.size;
-                }
-                    break;
-                default:
-                    type_size = 0;
-                    break;
-            }
+            int type_size = getSymbolSize(dest); 
 
             while(std::getline(value_stream, value, ';')) {
                 if (value.empty()) continue;
@@ -103,7 +103,6 @@ std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclar
         } else {}
     }
 
-    temp_count = 0;
     return std::any();
 }
 
@@ -133,7 +132,7 @@ std::any IRGenerator::visitAssignment(CompiScriptParser::AssignmentContext *ctx)
     }
     auto target = table->lookup(ctx->Identifier()->getText()).first;
     auto source = castSymbol(visitExpression(ctx->expression().at(0)));
-    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
+    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.label + source.name;
 
     optimize.push_back({.arg1 = arg, .result = target.label + target.name});
     optimizeQuadruplets();
@@ -147,7 +146,15 @@ std::any IRGenerator::visitExpressionStatement(CompiScriptParser::ExpressionStat
 }
 
 std::any IRGenerator::visitPrintStatement(CompiScriptParser::PrintStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto symbol = castSymbol(visitExpression(ctx->expression()));
+    if (symbol.data_type != SymbolDataType::STRING) {
+        auto arg = (symbol.type == SymbolType::LITERAL) ? symbol.value : symbol.label + symbol.name;
+        optimize.push_back({.op = "to_str", .arg1 = arg, .arg2 = std::to_string(getSymbolSize(symbol)), .result = "p"});
+    }
+    optimize.push_back({.op = "print"});
+    optimizeQuadruplets();
+
+    return std::any();
 }
 
 std::any IRGenerator::visitIfStatement(CompiScriptParser::IfStatementContext *ctx) {
@@ -385,12 +392,12 @@ std::any IRGenerator::visitAdditiveExpr(CompiScriptParser::AdditiveExprContext *
 
             if (first_symbol.data_type == SymbolDataType::STRING) {
                 if (second_symbol.data_type != SymbolDataType::STRING) {
+                    optimize.push_back({.op = "to_str", .arg1 = arg2, .arg2 = std::to_string(getSymbolSize(second_symbol)), .result = temp});
                     arg2 = temp;
-                    quadruplets.push_back({.op = "to_str", .arg1 = arg1, .result = temp});
                     temp = "t" + std::to_string(temp_count++);
                 }
 
-                quadruplets.push_back({.op = "concat", .arg1 = arg1, .arg2 = arg2, .result = temp});
+                optimize.push_back({.op = "concat", .arg1 = arg1, .arg2 = arg2, .result = temp});
             } else {
                 auto op = ctx->children.at(op_index)->getText();
                 optimize.push_back({.op = op, .arg1 = arg1, .arg2 = arg2, .result = temp});
@@ -473,7 +480,7 @@ std::any IRGenerator::visitLiteralExpr(CompiScriptParser::LiteralExprContext *ct
 
         if (std::regex_match(literal->getText(), std::regex("\"([^\"\r\n])*\""))) {
             new_symbol.data_type = SymbolDataType::STRING;
-            new_symbol.size = new_symbol.value.size() - 2;
+            new_symbol.size = 4;
         }
 
 
@@ -508,12 +515,29 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             atom.type = SymbolType::VARIABLE;
         }
         else
-        if (!atom.dimentions.size() && suffix.data_type == SymbolDataType::INTEGER) {
-
+        if (!atom.parent.empty() && suffix.type == SymbolType::PROPERTY) {
+            
         }
         else
-        if (!atom.parent.empty() && suffix.type == SymbolType::PROPERTY) {
+        if (!atom.dimentions.empty() && suffix.data_type == SymbolDataType::INTEGER) {
+            auto arg = (suffix.type == SymbolType::LITERAL) ? suffix.value : suffix.label + suffix.name;
+            // auto temp = "t" + std::to_string(temp_count++);
+            optimize.push_back({.arg1 = arg, .result = "t0"});
+            for (int i = 1; i < atom.dimentions.size(); i++) {
+                optimize.push_back({.op = "*", .arg1 = "t0", .arg2 = std::to_string(atom.dimentions.at(i)), .result = "t0"});
+            }
+            optimize.push_back({.op = "*", .arg1 = "t0", .arg2 = std::to_string(getSymbolSize(atom)), .result = "t0"});
+            optimize.push_back({.op = "+", .arg1 = atom.label + atom.name, .arg2 = "t0", .result = "i"});
 
+            if (atom.dimentions.size() - 1 > 0) {
+                atom.name = "i";
+            } else {
+                optimize.push_back({.arg1 = "i*", .result = "t0"});
+                atom.name = "t0";
+            }
+
+            atom.label = "";
+            atom.dimentions = std::vector(atom.dimentions.begin() + 1, atom.dimentions.end());
         }
     }
     return makeAny(atom);
@@ -539,7 +563,8 @@ std::any IRGenerator::visitCallExpr(CompiScriptParser::CallExprContext *ctx) {
 }
 
 std::any IRGenerator::visitIndexExpr(CompiScriptParser::IndexExprContext *ctx) {
-    return visitChildren(ctx);
+    Symbol array_index = castSymbol(visitExpression(ctx->expression()));
+    return array_index;
 }
 
 std::any IRGenerator::visitPropertyAccessExpr(CompiScriptParser::PropertyAccessExprContext *ctx) {
