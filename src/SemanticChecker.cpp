@@ -1026,10 +1026,6 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
             }
         }
         else
-        if (!atom.dimentions.empty() && suffix.data_type == SymbolDataType::INTEGER) {
-            atom.dimentions = std::vector(atom.dimentions.begin(), atom.dimentions.end() - 1);
-        }
-        else
         if (!atom.parent.empty() && suffix.type == SymbolType::PROPERTY) {
             auto prop_exists = table.get_property(atom.parent, suffix.name);
             if (!prop_exists.second) {
@@ -1038,6 +1034,11 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
                 throw std::runtime_error("UNDEFINED_ACCESS");
             }
             atom = prop_exists.first;
+        }
+        else
+        if (!atom.dimentions.empty() && suffix.data_type == SymbolDataType::INTEGER) {
+            atom.dimentions = std::vector(atom.dimentions.begin(), atom.dimentions.end() - 1);
+            atom.value = "";
         }
         else
         {
