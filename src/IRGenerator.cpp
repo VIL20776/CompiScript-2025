@@ -532,8 +532,7 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             if (atom.dimentions.size() - 1 > 0) {
                 atom.name = "i";
             } else {
-                optimize.push_back({.arg1 = "i*", .result = "t0"});
-                atom.name = "t0";
+                atom.name = "i*";
             }
 
             atom.label = "";
