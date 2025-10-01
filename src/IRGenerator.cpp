@@ -128,31 +128,44 @@ std::any IRGenerator::visitInitializer(CompiScriptParser::InitializerContext *ct
 
 std::any IRGenerator::visitAssignment(CompiScriptParser::AssignmentContext *ctx) {
     if (ctx->expression().size() > 1) {
-        //TODO
-    }
-    auto target = table->lookup(ctx->Identifier()->getText()).first;
-    auto source = castSymbol(visitExpression(ctx->expression().at(0)));
-    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.label + source.name;
+        auto target = castSymbol(visitExpression(ctx->expression().at(0)));
+        auto prop = table->get_property(target.parent, ctx->Identifier()->getText()).first;
+        auto source = castSymbol(visitExpression(ctx->expression().at(1)));
+        auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.label + source.name;
 
-    optimize.push_back({.arg1 = arg, .result = target.label + target.name});
+        optimize.push_back({.op = "+", .arg1 = target.label + target.name, .arg2 = std::to_string(prop.offset), .result = "i"});
+        optimize.push_back({.arg1 = arg, .result = "i*"});
+    } else {
+        auto target = table->lookup(ctx->Identifier()->getText()).first;
+        auto source = castSymbol(visitExpression(ctx->expression().at(0)));
+        auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.label + source.name;
+
+        optimize.push_back({.arg1 = arg, .result = target.label + target.name});
+    }
     optimizeQuadruplets();
 
     temp_count = 0;
-    return visitChildren(ctx);
+    return std::any();
 }
 
 std::any IRGenerator::visitExpressionStatement(CompiScriptParser::ExpressionStatementContext *ctx) {
-    return visitChildren(ctx);
+    visitChildren(ctx);
+    optimizeQuadruplets();
+    temp_count = 0;
+    return std::any();
 }
 
 std::any IRGenerator::visitPrintStatement(CompiScriptParser::PrintStatementContext *ctx) {
     auto symbol = castSymbol(visitExpression(ctx->expression()));
-    if (symbol.data_type != SymbolDataType::STRING) {
-        auto arg = (symbol.type == SymbolType::LITERAL) ? symbol.value : symbol.label + symbol.name;
+    auto arg = (symbol.type == SymbolType::LITERAL) ? symbol.value : symbol.label + symbol.name;
+    if (symbol.data_type != SymbolDataType::STRING)
         optimize.push_back({.op = "to_str", .arg1 = arg, .arg2 = std::to_string(getSymbolSize(symbol)), .result = "p"});
-    }
+    else 
+        optimize.push_back({.arg1 = arg, .result = "p"});
+    
     optimize.push_back({.op = "print"});
     optimizeQuadruplets();
+    temp_count = 0;
 
     return std::any();
 }
@@ -190,6 +203,7 @@ std::any IRGenerator::visitReturnStatement(CompiScriptParser::ReturnStatementCon
     auto arg = (ret.type == SymbolType::LITERAL) ? ret.value : ret.label + ret.name;
     optimize.push_back({.op = "return", .arg1 = arg});
     optimizeQuadruplets();
+    temp_count = 0;
     return std::any();
 }
 
@@ -213,16 +227,8 @@ std::any IRGenerator::visitFunctionDeclaration(CompiScriptParser::FunctionDeclar
     auto function = table->lookup(ctx->Identifier()->getText()).first;
 
     quadruplets.push_back({.op = "begin", .arg1 = function.label + function.name});
-    if (class_def) 
-        quadruplets.push_back({.op = "param", .result = function.label + "this"});
-    
     for (auto arg: function.arg_list) 
         quadruplets.push_back({.op = "param", .result = arg.label + arg.name});
-
-    if (class_def && function.name == "constructor") {
-        auto self = table->lookup("this").first;
-        quadruplets.push_back({.op = "alloc", .arg1 = std::to_string(self.size), .result = "this"});
-    }
     
     visitBlock(ctx->block());
 
@@ -497,6 +503,7 @@ std::any IRGenerator::visitLiteralExpr(CompiScriptParser::LiteralExprContext *ct
 
 std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *ctx) {
     auto atom = castSymbol(visit(ctx->primaryAtom()));
+    Symbol self;
     for (auto suffixOp: ctx->suffixOp()) {
         auto suffix = castSymbol(visit(suffixOp));
         if (atom.type == SymbolType::FUNCTION && suffix.type == SymbolType::ARGUMENT) {
@@ -504,10 +511,14 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
                 auto arg = (it->type == SymbolType::LITERAL) ? it->value : it->label + it->name;
                 optimize.push_back({.op = "push", .arg1 = arg});
             }
+            if (!self.name.empty()) {
+                optimize.push_back({.op = "push", .arg1 = self.label + self.name});
+                self.name = "";
+            }
              
-            if (suffix.data_type == SymbolDataType::NIL)
+            if (atom.data_type == SymbolDataType::NIL) 
                 optimize.push_back({.op = "call", .arg1 = atom.label + atom.name});
-            else
+            else 
                 optimize.push_back({.op = "call", .arg1 = atom.label + atom.name, .result = "ret"});
 
             atom.name = "ret";
@@ -516,7 +527,16 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
         }
         else
         if (!atom.parent.empty() && suffix.type == SymbolType::PROPERTY) {
-            
+            auto prop = table->get_property(atom.parent, suffix.name).first;
+            if (prop.type != SymbolType::FUNCTION) {
+                optimize.push_back({.op = "+", .arg1 = atom.label + atom.name, .arg2 = std::to_string(prop.offset), .result = "i"});
+                atom = prop;
+                atom.name = "i*";
+                atom.label = "";
+            } else {
+                self = atom;
+                atom = prop;
+            }
         }
         else
         if (!atom.dimentions.empty() && suffix.data_type == SymbolDataType::INTEGER) {
@@ -529,11 +549,10 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             optimize.push_back({.op = "*", .arg1 = "t0", .arg2 = std::to_string(getSymbolSize(atom)), .result = "t0"});
             optimize.push_back({.op = "+", .arg1 = atom.label + atom.name, .arg2 = "t0", .result = "i"});
 
-            if (atom.dimentions.size() - 1 > 0) {
+            if (atom.dimentions.size() - 1 > 0) 
                 atom.name = "i";
-            } else {
+            else 
                 atom.name = "i*";
-            }
 
             atom.label = "";
             atom.dimentions = std::vector(atom.dimentions.begin() + 1, atom.dimentions.end());
@@ -547,11 +566,31 @@ std::any IRGenerator::visitIdentifierExpr(CompiScriptParser::IdentifierExprConte
 }
 
 std::any IRGenerator::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
-    return visitChildren(ctx);
+    auto class_symbol = table->lookup(ctx->Identifier()->getText()).first;
+    auto constructor = table->get_property(class_symbol.name, "constructor").first;
+    auto temp = "t" + std::to_string(temp_count++);
+
+    optimize.push_back({.op = "alloc", .arg1 = std::to_string(class_symbol.size), .result = temp});
+    if (ctx->arguments() != nullptr) {
+        auto args = castSymbol(visitArguments(ctx->arguments()));
+        for (auto it = args.arg_list.rbegin(); it != args.arg_list.rend(); it++) {
+            auto arg = (it->type == SymbolType::LITERAL) ? it->value : it->label + it->name;
+            optimize.push_back({.op = "push", .arg1 = arg});
+        }
+    }
+    optimize.push_back({.op = "push", .arg1 = temp});
+    optimize.push_back({.op = "call", .arg1 = constructor.label + constructor.name});
+
+    Symbol new_symbol = {
+        .name = temp,
+        .label = "",
+        .type = SymbolType::VARIABLE,
+    };
+    return new_symbol;
 }
 
 std::any IRGenerator::visitThisExpr(CompiScriptParser::ThisExprContext *ctx) {
-    return visitChildren(ctx);
+    return table->lookup("this", false).first;
 }
 
 std::any IRGenerator::visitCallExpr(CompiScriptParser::CallExprContext *ctx) {
@@ -567,7 +606,9 @@ std::any IRGenerator::visitIndexExpr(CompiScriptParser::IndexExprContext *ctx) {
 }
 
 std::any IRGenerator::visitPropertyAccessExpr(CompiScriptParser::PropertyAccessExprContext *ctx) {
-    return visitChildren(ctx);
+    auto name = ctx->Identifier()->getText();
+    Symbol symbol_prop = {.name = name, .type = SymbolType::PROPERTY};
+    return makeAny(symbol_prop);
 }
 
 std::any IRGenerator::visitArguments(CompiScriptParser::ArgumentsContext *ctx) {

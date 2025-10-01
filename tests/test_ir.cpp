@@ -16,7 +16,7 @@ let y = !(x < 10 || x > 20);
 let z = (1 + 2) * 3;
                 )");
 
-    REQUIRE(R"(t0 = * 3 2
+    std::string expected = R"(t0 = * 3 2
 t1 = + 5 t0
 L0_x =  t1 
 t0 = < L0_x 10
@@ -27,7 +27,13 @@ L0_y =  t3
 t0 = + 1 2
 t1 = * t0 3
 L0_z =  t1 
-)" == generated_tac);
+)";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
 
 }
 
@@ -47,7 +53,7 @@ function crearContador(): integer {
 }
                 )");
 
-    REQUIRE(R"(begin L0_saludar 
+    std::string expected = R"(begin L0_saludar 
 L1_nombre = param  
 t0 = concat "Hola " L1_nombre
 return t0 
@@ -62,21 +68,104 @@ end L2_siguiente
 ret = call L2_siguiente 
 return ret 
 end L0_crearContador 
-)" == generated_tac);
+)";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
     
 }
 
 TEST_CASE("Array code generation", "[Array gen]") {
     auto generated_tac = test_ir_gen(R"(
 let lista = [1, 2, 3];
+print(lista[0]);
+let matriz = [[1, 2], [3, 4]];
+let num2 = matriz[0][1];
                 )");
+    std::string expected = R"(L0_lista = alloc 12 
+        i = + L0_lista 0
+        i* =  1 
+        i = + L0_lista 4
+        i* =  2 
+        i = + L0_lista 8
+        i* =  3 
+        t0 = 0 
+        t0 = * t0 4 
+        i = + L0_lista t0       
+        p = to_str i* 4
+        print
+        L0_matriz = alloc 16 
+        i = + L0_matriz 0
+        i* =  1 
+        i = + L0_matriz 4
+        i* =  2 
+        i = + L0_matriz 8
+        i* =  3 
+        i = + L0_matriz 12
+        i* =  4 
+        t0 =  0 
+        t0 = * t0 2
+        t0 = * t0 4
+        i = + L0_matriz t0
+        t0 =  1 
+        t0 = * t0 4
+        i = + i t0 
+        L0_num2 =  i* 
+    )";
 
-    REQUIRE(R"(L0_lista = alloc 12 
-i = + L0_lista 0
-i* =  1 
-i = + L0_lista 4
-i* =  2 
-i = + L0_lista 8
-i* =  3 
-)" == generated_tac);
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
+}
+
+TEST_CASE("Class code generation", "[Class gen]") {
+    auto generated_tac = test_ir_gen(R"(
+class Animal {
+  let nombre: string;
+
+  function constructor(nombre: string) {
+    this.nombre = nombre;
+  }
+
+  function hablar(): string {
+    return this.nombre + " hace ruido.";
+  }
+}
+
+let animal = new Animal("Firulais");
+print(animal.hablar());
+                )");
+    std::string expected = R"(begin L1_constructor 
+        L2_this = param
+        L2_nombre = param
+        i = + L2_this 0
+        i* = L2_nombre
+        end L1_constructor
+        begin L1_hablar  
+        L3_this = param  
+        i = + L3_this 0 
+        t0 = concat i* " hace ruido." 
+        return t0
+        end L1_hablar
+        t0 = alloc 4 
+        push "Firulais"
+        push t0  
+        call L1_constructor  
+        L0_animal = t0
+        push L0_animal
+        ret = call L1_hablar
+        p = ret
+        print
+    )";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
 }

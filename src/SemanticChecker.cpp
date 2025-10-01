@@ -102,6 +102,7 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
         new_symbol.parent = symbol_type.parent;
         new_symbol.data_type = symbol_type.data_type;
         new_symbol.dimentions = symbol_type.dimentions;
+        new_symbol.size = symbol_type.size;
     }
 
     if (ctx->initializer() != nullptr) {
@@ -134,7 +135,7 @@ std::any SemanticChecker::visitVariableDeclaration(CompiScriptParser::VariableDe
         new_symbol.size = initiallizer.size;
     }
 
-    if (context == CLASS) {
+    if (context & CLASS) {
         new_symbol.offset = class_size;
         class_size += new_symbol.size;
     }
@@ -168,6 +169,7 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
         new_symbol.parent = symbol_type.parent;
         new_symbol.data_type = symbol_type.data_type;
         new_symbol.dimentions = symbol_type.dimentions;
+        new_symbol.size = symbol_type.size;
     }
 
     auto expression = castSymbol(visitExpression(ctx->expression()));
@@ -197,7 +199,7 @@ std::any SemanticChecker::visitConstantDeclaration(CompiScriptParser::ConstantDe
     new_symbol.dimentions = expression.dimentions;
     new_symbol.size = expression.size;
 
-    if (context == CLASS) {
+    if (context & CLASS) {
         new_symbol.offset = class_size;
         class_size += new_symbol.size;
     }
@@ -569,9 +571,12 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
     if (ctx->type() != nullptr) {
         auto symbol_type = castSymbol(visitType(ctx->type()));
         new_symbol.data_type = symbol_type.data_type;
-        if (!symbol_type.dimentions.empty()) {
+        new_symbol.size = symbol_type.size;
+        if (!symbol_type.parent.empty())
+            new_symbol.parent = symbol_type.parent;
+        if (!symbol_type.dimentions.empty())
             new_symbol.dimentions = symbol_type.dimentions;
-        }
+       
     } else {
         new_symbol.data_type = SymbolDataType::NIL;
     }
@@ -580,9 +585,14 @@ std::any SemanticChecker::visitFunctionDeclaration(CompiScriptParser::FunctionDe
 
     table.addChildTable();
 
+    auto self_exists = table.lookup("this", false);
+    if (self_exists.second) {
+        new_symbol.arg_list.push_back(self_exists.first);
+    }
+
     if (ctx->parameters() != nullptr) {
         auto symbol_params = castSymbol(visitParameters(ctx->parameters()));
-        new_symbol.arg_list = symbol_params.arg_list;
+        new_symbol.arg_list.append_range(symbol_params.arg_list);
     }
 
     table.insert(new_symbol.arg_list);
@@ -975,7 +985,7 @@ std::any SemanticChecker::visitLiteralExpr(CompiScriptParser::LiteralExprContext
 
         if (std::regex_match(literal->getText(), std::regex("\"([^\"\r\n])*\""))) {
             new_symbol.data_type = SymbolDataType::STRING;
-            new_symbol.size = new_symbol.value.size() - 2;
+            new_symbol.size = 4;
         }
 
 
@@ -1034,6 +1044,9 @@ std::any SemanticChecker::visitLeftHandSide(CompiScriptParser::LeftHandSideConte
                 throw std::runtime_error("UNDEFINED_ACCESS");
             }
             atom = prop_exists.first;
+            if (atom.type == SymbolType::FUNCTION)
+                atom.arg_list.erase(atom.arg_list.begin());
+            
         }
         else
         if (!atom.dimentions.empty() && suffix.data_type == SymbolDataType::INTEGER) {
@@ -1086,7 +1099,7 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
 
     if (ctx->arguments() != nullptr) {
         auto args_symbol = castSymbol(visitArguments(ctx->arguments()));
-        if (class_symbol.arg_list.size() != args_symbol.arg_list.size()) {
+        if (class_symbol.arg_list.size() - 1 != args_symbol.arg_list.size()) {
             std::println(stderr, "Error in line {}: Expected {} arguments, recieved {}.",
                              ctx->getStart()->getLine(),
                          class_symbol.arg_list.size(),
@@ -1094,9 +1107,9 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
             throw std::runtime_error("INCOMPLETE_CALL");
         }
 
-        int limit = class_symbol.arg_list.size();
+        int limit = class_symbol.arg_list.size() - 1;
         for (int i = 0; i < limit; i++) {
-            auto expected = class_symbol.arg_list.at(i).data_type;
+            auto expected = class_symbol.arg_list.at(i + 1).data_type;
             auto received = args_symbol.arg_list.at(i).data_type;
             if (expected != received) {
                 std::println(stderr, "Error in line {}: Expected argument of type '{}', recieved '{}'.",
@@ -1107,7 +1120,7 @@ std::any SemanticChecker::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
             }
         }        
     } else {
-        if (!class_symbol.arg_list.empty()) {
+        if (class_symbol.arg_list.size() > 1) {
             std::println(stderr, "Error in line {}: Expected {} arguments, recieved none.",
                              ctx->getStart()->getLine(),
                          class_symbol.arg_list.size());
