@@ -10,7 +10,7 @@
 
 using namespace CompiScript;
 
-SemanticChecker::SemanticChecker(): table(), context(TableContext::NORMAL), context_name("") {}
+SemanticChecker::SemanticChecker(): table(), context(TableContext::NORMAL), context_name(""), class_size(0){}
 SemanticChecker::~SemanticChecker() {}
 
 //SemanticChecker implementations
@@ -282,8 +282,8 @@ std::any SemanticChecker::visitAssignment(CompiScriptParser::AssignmentContext *
         throw std::runtime_error("NON_MATCHING_TYPES");
     }
 
-    symbol.value = expr.value;
-    table.update(name, symbol);
+    // symbol.value = expr.value;
+    // table.update(name, symbol);
 
     return makeAny(symbol);
 }
@@ -677,6 +677,7 @@ std::any SemanticChecker::visitClassDeclaration(CompiScriptParser::ClassDeclarat
         }
         new_symbol.parent = parent;
         new_symbol.arg_list = symbol_exists.first.arg_list;
+        class_size = symbol_exists.first.size;
     }
 
     table.insert(new_symbol);
