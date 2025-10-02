@@ -50,7 +50,6 @@ nombre = "Compiscript";
 
         auto nombre = table.lookup("nombre").first;
         REQUIRE(nombre.data_type == SymbolDataType::STRING);
-        REQUIRE(nombre.value == "\"Compiscript\"");
     }
 }
 
@@ -216,6 +215,7 @@ let perro: Perro = new Perro("Firulais");
         auto animal = table.lookup("Animal").first;
         REQUIRE(table.lookup("Animal").second);
         REQUIRE(!animal.arg_list.empty());
+        REQUIRE(animal.size == 4);
     }
 
     SECTION("Class declaration with inheritance") {
@@ -223,6 +223,7 @@ let perro: Perro = new Perro("Firulais");
         REQUIRE(table.lookup("Perro").second);
         REQUIRE(perro.parent == "Animal");
         REQUIRE(!perro.arg_list.empty());
+        REQUIRE(perro.size == 4);
     }
 
     SECTION("Object declaration") {

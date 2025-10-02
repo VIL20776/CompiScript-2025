@@ -139,6 +139,15 @@ class Animal {
 
 let animal = new Animal("Firulais");
 print(animal.hablar());
+
+class Perro: Animal {
+    function hablar(): string {
+        return this.nombre + " ladra.";
+    }
+}
+
+let perro = new Perro("Firulais");
+print(perro.hablar());
                 )");
     std::string expected = R"(begin L1_constructor 
         L2_this = param
@@ -155,12 +164,66 @@ print(animal.hablar());
         t0 = alloc 4 
         push "Firulais"
         push t0  
-        call L1_constructor  
+        call L1_constructor 
         L0_animal = t0
         push L0_animal
         ret = call L1_hablar
         p = ret
         print
+        begin L4_hablar
+        L5_this = param
+        i = + L5_this 0
+        t0 = concat i* " ladra."
+        return t0
+        end L4_hablar
+        t0 = alloc 4 
+        push "Firulais"
+        push t0  
+        call L1_constructor 
+        L0_perro = t0
+        push L0_perro
+        ret = call L4_hablar
+        p = ret
+        print
+    )";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
+}
+
+TEST_CASE("Conditionals code generation", "[Array gen]") {
+    auto generated_tac = test_ir_gen(R"(
+let x = 4;
+if (x > 10) {
+  print("Mayor a 10");
+} else {
+  print("Menor o igual");
+}
+
+while (x < 5) {
+  x = x + 1;
+}
+                )");
+    std::string expected = R"(L0_x = 4
+        t0 = > L0_x 10
+        if t0 l0
+        goto l1
+        tag l0
+        p = "Mayor a 10"
+        print
+        tag l1
+        p = "Menor o igual"
+        print
+        tag l2
+        t0 = < L0_x 5
+        ifnot t0 l3
+        t0 = + L0_x 1
+        L0_x = t0
+        goto l2
+        tag l3
     )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
