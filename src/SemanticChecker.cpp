@@ -424,7 +424,7 @@ std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatem
         .parent = iter_symbol.parent,
         .type = SymbolType::VARIABLE,
         .data_type = iter_symbol.data_type,
-        .dimentions = std::vector(iter_symbol.dimentions.begin(), iter_symbol.dimentions.end() - 1),
+        .dimentions = std::vector(iter_symbol.dimentions.begin() + 1, iter_symbol.dimentions.end()),
     };
 
     bool flag_set = (context & TableContext::FOR) ? true: false;
