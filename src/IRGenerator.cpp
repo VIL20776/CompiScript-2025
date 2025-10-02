@@ -15,6 +15,7 @@ IRGenerator::IRGenerator(SymbolTable* table):
     optimize(), 
     quadruplets(), 
     temp_count(0),
+    label_count(0),
     class_def(false) {}
 
 IRGenerator::~IRGenerator() {}
@@ -80,7 +81,7 @@ std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclar
     auto dest = table->lookup(ctx->Identifier()->getText()).first;
     if (dest.value.empty()) {
         auto source = castSymbol(visitInitializer(ctx->initializer()));
-        auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
+        auto arg = source.label + source.name;
 
         optimize.push_back({.arg1 = arg, .result = dest.label + dest.name});
         optimizeQuadruplets();
@@ -100,7 +101,9 @@ std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclar
                 quadruplets.push_back({.arg1 = value, .result = "i*"});
                 offset += type_size;
             }
-        } else {}
+        } else {
+            quadruplets.push_back({.arg1 = dest.value, .result = dest.label + dest.name});
+        }
     }
 
     return std::any();
@@ -136,7 +139,7 @@ std::any IRGenerator::visitAssignment(CompiScriptParser::AssignmentContext *ctx)
         optimize.push_back({.op = "+", .arg1 = target.label + target.name, .arg2 = std::to_string(prop.offset), .result = "i"});
         optimize.push_back({.arg1 = arg, .result = "i*"});
     } else {
-        auto target = table->lookup(ctx->Identifier()->getText()).first;
+        auto target = table->lookup(ctx->Identifier()->getText(), false).first;
         auto source = castSymbol(visitExpression(ctx->expression().at(0)));
         auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.label + source.name;
 
@@ -171,11 +174,44 @@ std::any IRGenerator::visitPrintStatement(CompiScriptParser::PrintStatementConte
 }
 
 std::any IRGenerator::visitIfStatement(CompiScriptParser::IfStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto expr = castSymbol(visitExpression(ctx->expression()));
+    auto arg = (expr.type == SymbolType::LITERAL) ? expr.value : expr.label + expr.name;
+    auto label = "l" + std::to_string(label_count++);
+    auto else_label = "l" + std::to_string(label_count++);
+    
+    optimize.push_back({.op = "if", .arg1 = arg, .arg2 = label});
+    optimize.push_back({.op = "goto", .arg1 = else_label});
+    optimizeQuadruplets();
+    temp_count = 0;
+
+    quadruplets.push_back({.op = "tag", .arg1 = label});
+    visitBlock(ctx->block().at(0));
+    quadruplets.push_back({.op = "tag", .arg1 = else_label});
+
+    if (ctx->block().size() == 2)
+        visitBlock(ctx->block().at(1));
+
+    return std::any();
 }
 
 std::any IRGenerator::visitWhileStatement(CompiScriptParser::WhileStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto label = "l" + std::to_string(label_count++);
+    auto end_label = "l" + std::to_string(label_count++);
+    optimize.push_back({.op = "tag", .arg1 = label});
+
+    auto expr = castSymbol(visitExpression(ctx->expression()));
+    auto arg = (expr.type == SymbolType::LITERAL) ? expr.value : expr.label + expr.name;
+    
+    optimize.push_back({.op = "ifnot", .arg1 = arg, .arg2 = end_label});
+    optimizeQuadruplets();
+    temp_count = 0;
+
+    visitBlock(ctx->block());
+
+    quadruplets.push_back({.op = "goto", .arg1 = label});
+    quadruplets.push_back({.op = "tag", .arg1 = end_label});
+
+    return std::any();
 }
 
 std::any IRGenerator::visitDoWhileStatement(CompiScriptParser::DoWhileStatementContext *ctx) {
@@ -562,7 +598,7 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
 }
 
 std::any IRGenerator::visitIdentifierExpr(CompiScriptParser::IdentifierExprContext *ctx) {
-    return table->lookup(ctx->Identifier()->getText()).first;
+    return table->lookup(ctx->Identifier()->getText(), false).first;
 }
 
 std::any IRGenerator::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {

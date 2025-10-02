@@ -24,6 +24,7 @@ private:
     std::vector<Quad> optimize;
     bool class_def;
     int temp_count;
+    int label_count;
 
     void optimizeQuadruplets();
 
