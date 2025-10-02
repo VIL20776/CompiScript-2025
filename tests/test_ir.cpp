@@ -206,6 +206,10 @@ if (x > 10) {
 while (x < 5) {
   x = x + 1;
 }
+
+do {
+  x = x - 1;
+} while (x > 0);
                 )");
     std::string expected = R"(L0_x = 4
         t0 = > L0_x 10
@@ -224,6 +228,12 @@ while (x < 5) {
         L0_x = t0
         goto l2
         tag l3
+        tag l4
+        t0 = - L0_x 1
+        L0_x = t0
+        t0 = > L0_x 0
+        if t0 l4
+        tag l5
     )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
