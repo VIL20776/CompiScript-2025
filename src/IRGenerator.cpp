@@ -215,15 +215,85 @@ std::any IRGenerator::visitWhileStatement(CompiScriptParser::WhileStatementConte
 }
 
 std::any IRGenerator::visitDoWhileStatement(CompiScriptParser::DoWhileStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto label = "l" + std::to_string(label_count++);
+    auto end_label = "l" + std::to_string(label_count++);
+    quadruplets.push_back({.op = "tag", .arg1 = label});
+
+    visitBlock(ctx->block());
+ 
+    auto expr = castSymbol(visitExpression(ctx->expression()));
+    auto arg = (expr.type == SymbolType::LITERAL) ? expr.value : expr.label + expr.name;   
+
+    optimize.push_back({.op = "if", .arg1 = arg, .arg2 = label});
+    optimizeQuadruplets();
+    temp_count = 0;
+
+    quadruplets.push_back({.op = "tag", .arg1 = end_label}); 
+    return std::any();
 }
 
 std::any IRGenerator::visitForStatement(CompiScriptParser::ForStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto label = "l" + std::to_string(label_count++);
+    auto end_label = "l" + std::to_string(label_count++);
+
+    if (ctx->variableDeclaration() != nullptr)
+        visitVariableDeclaration(ctx->variableDeclaration());
+    if (ctx->assignment() != nullptr)
+        visitAssignment(ctx->assignment());
+
+    quadruplets.push_back({.op = "tag", .arg1 = label});
+    if (ctx->expression().size() > 0) {
+        auto expr = castSymbol(visitExpression(ctx->expression().at(0)));
+        auto arg = (expr.type == SymbolType::LITERAL) ? expr.value : expr.label + expr.name;
+        optimize.push_back({.op = "ifnot", .arg1 = arg, .arg2 = end_label});
+        optimizeQuadruplets();
+        temp_count = 0;
+    }
+
+    visitBlock(ctx->block());
+
+    if (ctx->expression().size() > 1) {
+        visitExpression(ctx->expression().at(1));
+        optimizeQuadruplets();
+        temp_count = 0;
+    }
+    quadruplets.push_back({.op = "goto", .arg1 = label});
+    quadruplets.push_back({.op = "tag", .arg1 = end_label});
+
+    return std::any();
 }
 
 std::any IRGenerator::visitForeachStatement(CompiScriptParser::ForeachStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto label = "l" + std::to_string(label_count++);
+    auto end_label = "l" + std::to_string(label_count++);
+
+    auto expr = castSymbol(visitExpression(ctx->expression()));
+    auto arg = expr.label + expr.name;
+    auto target = table->lookup(ctx->Identifier()->getText()).first;
+
+    if (target.dimentions.empty())
+        optimize.push_back({.arg1 = arg + "*", .result = target.label + target.name});
+    else
+        optimize.push_back({.arg1 = arg, .result = target.label + target.name});
+    optimizeQuadruplets();
+    temp_count = 0;
+
+    int limit = expr.size;
+    int offset = getSymbolSize(expr);
+    for (auto i = 1; i < expr.dimentions.size(); i++)
+        offset *= expr.dimentions.at(i);
+
+    quadruplets.push_back({.op = "tag", .arg1 = label});
+
+    visitBlock(ctx->block());
+
+    quadruplets.push_back({.op = "+", .arg1 = arg, .arg2 = std::to_string(offset), .result = "t0"});
+    quadruplets.push_back({.op = "<", .arg1 = "t0", .arg2 = std::to_string(limit), .result = "t0"});
+    quadruplets.push_back({.op = "if", .arg1 = "t0", .arg2 = label});
+
+    quadruplets.push_back({.op = "tag", .arg1 = end_label});
+
+    return std::any();
 }
 
 std::any IRGenerator::visitBreakStatement(CompiScriptParser::BreakStatementContext *ctx) {
