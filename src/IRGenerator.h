@@ -22,9 +22,11 @@ private:
     SymbolTable* table;
     std::vector<Quad> quadruplets;
     std::vector<Quad> optimize;
-    bool class_def;
+    std::string begin_label;
+    std::string end_label;
     int temp_count;
     int label_count;
+    bool class_def;
 
     void optimizeQuadruplets();
 

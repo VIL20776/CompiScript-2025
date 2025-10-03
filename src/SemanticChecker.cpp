@@ -380,10 +380,10 @@ std::any SemanticChecker::visitForStatement(CompiScriptParser::ForStatementConte
     if (ctx->assignment() != nullptr) 
         visitAssignment(ctx->assignment());
 
-    table.addChildTable();
     if (ctx->variableDeclaration() != nullptr)
         visitVariableDeclaration(ctx->variableDeclaration());
 
+    table.addChildTable();
     if (ctx->expression().at(0) != nullptr) {
         auto condition = castSymbol(visitExpression(ctx->expression().at(0)));
         if (condition.data_type != SymbolDataType::BOOLEAN) {
@@ -430,8 +430,8 @@ std::any SemanticChecker::visitForeachStatement(CompiScriptParser::ForeachStatem
     bool flag_set = (context & TableContext::FOR) ? true: false;
     context = (TableContext)(context | TableContext::FOR);
 
-    table.addChildTable();
     table.insert(new_symbol);
+    table.addChildTable();
     visitBlock(ctx->block());
     table.setParentToCurrent();
 
@@ -725,44 +725,60 @@ std::any SemanticChecker::visitExpression(CompiScriptParser::ExpressionContext *
 }
 
 std::any SemanticChecker::visitAssignExpr(CompiScriptParser::AssignExprContext *ctx) {
-    return std::any();
+    // std::println("Calling assignment expr");
+    Symbol symbol = castSymbol(visitLeftHandSide(ctx->lhs));
+    if (symbol.type == SymbolType::CONSTANT) {
+        std::println(stderr, "Error in line {}: Can't modify a constant.",
+                             ctx->getStart()->getLine());
+        throw std::runtime_error("CONSTANT_MODIFICATION");
+    }
+    Symbol expr = castSymbol(visit(ctx->assignmentExpr()));
+    if (symbol.data_type != expr.data_type || symbol.dimentions != expr.dimentions) {
+        std::println(stderr, "Error in line {}: Type mismatch on assigment.",
+                             ctx->getStart()->getLine());
+        throw std::runtime_error("NON_MATCHING_TYPES");
+    }
+
+    // symbol.value = expr.value;
+    // table.update(name, symbol);
+
+    return makeAny(symbol);
 }
 
 std::any SemanticChecker::visitPropertyAssignExpr(CompiScriptParser::PropertyAssignExprContext *ctx) {
     // std::println("Calling assignment property expr");
-    // auto prop_name = ctx->Identifier()->getText();
-    // auto symbol = castSymbol(visitLeftHandSide(ctx->lhs));
-    //
-    // if (symbol.data_type != SymbolDataType::OBJECT) {
-    //     std::println(stderr, "Error in line {}: Symbol {} is not of type object.",
-    //                          ctx->getStart()->getLine(),
-    //                  symbol.name.c_str());
-    //     throw std::runtime_error("INVALID_SUFFIX");
-    //     
-    // }
-    //
-    // auto symbol_exists = table.get_property(symbol.parent, prop_name);
-    // if (!symbol_exists.second) {
-    //     std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
-    //                          ctx->getStart()->getLine(),
-    //                  prop_name.c_str());
-    //     throw std::runtime_error("UNDEFINED_ACCESS");
-    //     
-    // }
-    //
-    // auto prop_symbol = symbol_exists.first;
-    // auto expr = castSymbol(visit(ctx->assignmentExpr()));
-    // if (prop_symbol.data_type != expr.data_type || prop_symbol.dimentions != expr.dimentions) {
-    //     std::println(stderr, "Error in line {}: Type mismatch on assigment",
-    //                          ctx->getStart()->getLine());
-    //     throw std::runtime_error("NON_MATCHING_TYPES");
-    // }
-    //
-    // // prop_symbol.value = expr.value;
-    // // table.set_property(symbol.parent, prop_name, prop_symbol);
-    //
-    // return makeAny(prop_symbol);
-    return std::any();
+    auto prop_name = ctx->Identifier()->getText();
+    auto symbol = castSymbol(visitLeftHandSide(ctx->lhs));
+
+    if (symbol.data_type != SymbolDataType::OBJECT) {
+        std::println(stderr, "Error in line {}: Symbol {} is not of type object.",
+                             ctx->getStart()->getLine(),
+                     symbol.name.c_str());
+        throw std::runtime_error("INVALID_SUFFIX");
+        
+    }
+
+    auto symbol_exists = table.get_property(symbol.parent, prop_name);
+    if (!symbol_exists.second) {
+        std::println(stderr, "Error in line {}: Property '{}' isn't defined.",
+                             ctx->getStart()->getLine(),
+                     prop_name.c_str());
+        throw std::runtime_error("UNDEFINED_ACCESS");
+        
+    }
+
+    auto prop_symbol = symbol_exists.first;
+    auto expr = castSymbol(visit(ctx->assignmentExpr()));
+    if (prop_symbol.data_type != expr.data_type || prop_symbol.dimentions != expr.dimentions) {
+        std::println(stderr, "Error in line {}: Type mismatch on assigment",
+                             ctx->getStart()->getLine());
+        throw std::runtime_error("NON_MATCHING_TYPES");
+    }
+
+    // prop_symbol.value = expr.value;
+    // table.set_property(symbol.parent, prop_name, prop_symbol);
+
+    return makeAny(prop_symbol);
 }
 
 std::any SemanticChecker::visitExprNoAssign(CompiScriptParser::ExprNoAssignContext *ctx) {
