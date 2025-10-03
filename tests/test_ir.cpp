@@ -194,7 +194,7 @@ print(perro.hablar());
     REQUIRE(expected == generated_tac);
 }
 
-TEST_CASE("Conditionals code generation", "[Array gen]") {
+TEST_CASE("Conditionals code generation", "[Conditional gen]") {
     auto generated_tac = test_ir_gen(R"(
 let x = 4;
 if (x > 10) {
@@ -234,6 +234,67 @@ do {
         t0 = > L0_x 0
         if t0 l4
         tag l5
+    )";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
+}
+
+TEST_CASE("For loop code generation", "[For loop gen]") {
+    auto generated_tac = test_ir_gen(R"(
+for (let i: integer = 0; i < 3; i = i + 1) {
+  print(i);
+}
+
+let notas = [40, 60, 80, 100];
+foreach (n in notas) {
+  if (n < 60) { continue; }
+  if (n == 100) { break; }
+  print(n);
+}
+                )");
+    std::string expected = R"(L0_i = 0
+        tag l0
+        t0 = < L0_i 3
+        ifnot t0 l1
+        p = to_str L0_i 4
+        print
+        t0 = + L0_i 1
+        L0_i = t0
+        goto l0
+        tag l1
+        L0_notas = alloc 16
+        i = + L0_notas 0
+        i* = 40
+        i = + L0_notas 4
+        i* = 60
+        i = + L0_notas 8
+        i* = 80
+        i = + L0_notas 12
+        i* = 100
+        L0_n = L0_notas*
+        tag l2   
+        t0 = < L0_n 60
+        if t0 l4  
+        goto l5  
+        tag l4   
+        goto l2  
+        tag l5   
+        t0 = == L0_n 100
+        if t0 l6  
+        goto l7  
+        tag l6   
+        goto l3  
+        tag l7   
+        p = to_str L0_n 4
+        print   
+        t0 = + L0_notas 4
+        t0 = < t0 16
+        if t0 l2  
+        tag l3
     )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
