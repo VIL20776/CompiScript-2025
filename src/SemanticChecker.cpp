@@ -489,12 +489,13 @@ std::any SemanticChecker::visitTryCatchStatement(CompiScriptParser::TryCatchStat
     table.setParentToCurrent();
 
     Symbol error_symbol = {
+        .name = ctx->Identifier()->getText(),
         .type = SymbolType::CONSTANT,
         .data_type = SymbolDataType::STRING,
     };
 
-    table.addChildTable();
     table.insert(error_symbol);
+    table.addChildTable();
     visitBlock(ctx->block().at(1));
     table.setParentToCurrent();
 

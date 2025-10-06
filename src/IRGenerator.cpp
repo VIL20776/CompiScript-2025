@@ -112,14 +112,34 @@ std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclar
 }
 
 std::any IRGenerator::visitConstantDeclaration(CompiScriptParser::ConstantDeclarationContext *ctx) {
-    auto target = table->lookup(ctx->Identifier()->getText()).first;
-    auto source = castSymbol(visitExpression(ctx->expression()));
-    auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.name;
+    auto dest = table->lookup(ctx->Identifier()->getText()).first;
+    if (dest.value.empty()) {
+        auto source = castSymbol(visitExpression(ctx->expression()));
+        auto arg = source.label + source.name;
 
-    optimize.push_back({.arg1 = arg, .result = target.name});
-    optimizeQuadruplets();
+        optimize.push_back({.arg1 = arg, .result = dest.label + dest.name});
+        optimizeQuadruplets();
+        temp_count = 0;
+    } else {
+        if (!dest.dimentions.empty()) {
+            quadruplets.push_back({.op = "alloc", .arg1 = std::to_string(dest.size), .result = dest.label + dest.name});
+            std::stringstream value_stream (dest.value);
+            std::string value;
+            int offset = 0;
+            int type_size = getSymbolSize(dest); 
 
-    temp_count = 0;
+            while(std::getline(value_stream, value, ';')) {
+                if (value.empty()) continue;
+
+                quadruplets.push_back({.op = "+", .arg1 = dest.label + dest.name, .arg2 = std::to_string(offset), .result = "i"});
+                quadruplets.push_back({.arg1 = value, .result = "i*"});
+                offset += type_size;
+            }
+        } else {
+            quadruplets.push_back({.arg1 = dest.value, .result = dest.label + dest.name});
+        }
+    }
+
     return std::any();
 }
 
@@ -341,15 +361,58 @@ std::any IRGenerator::visitReturnStatement(CompiScriptParser::ReturnStatementCon
 }
 
 std::any IRGenerator::visitTryCatchStatement(CompiScriptParser::TryCatchStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto catch_label = "l" + std::to_string(label_count++);
+
+    quadruplets.push_back({.arg1 = catch_label, .result = "catch"});
+    visitBlock(ctx->block().at(0));
+    quadruplets.push_back({.arg1 = "0", .result = "catch"});
+
+    quadruplets.push_back({.op = "begin", .arg1 = catch_label});
+    auto error_symbol = table->lookup(ctx->Identifier()->getText(), false).first;
+    quadruplets.push_back({.arg1 = "err", .result = error_symbol.label + error_symbol.name});
+    visitBlock(ctx->block().at(1));
+    quadruplets.push_back({.op = "end", .arg1 = catch_label});
+
+    return std::any();
 }
 
 std::any IRGenerator::visitSwitchStatement(CompiScriptParser::SwitchStatementContext *ctx) {
-    return visitChildren(ctx);
+    auto prev_end = end_label;
+
+    end_label = "l" + std::to_string(label_count + ctx->switchCase().size());    
+
+    auto expr = castSymbol(visitExpression(ctx->expression()));
+    auto arg = expr.label + expr.name;
+    optimize.push_back({.arg1 = arg, .result = "switch"});
+    optimizeQuadruplets();
+    temp_count = 0;
+
+    for (auto member: ctx->switchCase())
+        visitSwitchCase(member);
+    
+    if (ctx->defaultCase() != nullptr)
+        visitDefaultCase(ctx->defaultCase());
+
+    quadruplets.push_back({.op = "tag", .arg1 = end_label});
+
+    end_label = prev_end;
+    return std::any();
 }
 
 std::any IRGenerator::visitSwitchCase(CompiScriptParser::SwitchCaseContext *ctx) {
-    return visitChildren(ctx);
+    auto next_label = "l" + std::to_string(label_count++);
+    auto expr = castSymbol(visitExpression(ctx->expression()));
+    auto arg = expr.value;
+
+    quadruplets.push_back({.op = "==", .arg1 = "switch", .arg2 = arg, .result = "case"});
+    quadruplets.push_back({.op = "ifnot", .arg1 = "case", .arg2 = next_label});
+
+    for (auto statement: ctx->statement())
+        visitStatement(statement); 
+
+    quadruplets.push_back({.op = "goto", .arg1 = end_label});
+    quadruplets.push_back({.op = "tag", .arg1 = next_label});
+    return std::any();
 }
 
 std::any IRGenerator::visitDefaultCase(CompiScriptParser::DefaultCaseContext *ctx) {
@@ -425,6 +488,31 @@ std::any IRGenerator::visitExprNoAssign(CompiScriptParser::ExprNoAssignContext *
 }
 
 std::any IRGenerator::visitTernaryExpr(CompiScriptParser::TernaryExprContext *ctx) {
+    if (!ctx->expression().empty()) {
+        auto temp = "t" + std::to_string(temp_count++);
+        auto false_label = "l" + std::to_string(label_count++);
+        auto end_label = "l" + std::to_string(label_count++);
+
+        auto symbol = castSymbol(visitLogicalOrExpr(ctx->logicalOrExpr()));
+        auto arg = (symbol.type == SymbolType::LITERAL) ? symbol.value : symbol.label + symbol.name;
+
+        optimize.push_back({.op = "ifnot", .arg1 = arg, .arg2 = false_label});
+        auto expr1 = castSymbol(visitExpression(ctx->expression().at(0)));
+        auto arg1 = (expr1.type == SymbolType::LITERAL) ? expr1.value : expr1.label + expr1.name;
+        optimize.push_back({.arg1 = arg1, .result = temp});
+        optimize.push_back({.op = "goto", .arg1 = end_label});
+
+        optimize.push_back({.op = "tag", .arg1 = false_label});
+        auto expr2 = castSymbol(visitExpression(ctx->expression().at(1)));
+        auto arg2 = (expr2.type == SymbolType::LITERAL) ? expr2.value : expr2.label + expr2.name;
+        optimize.push_back({.arg1 = arg2, .result = temp});
+        optimize.push_back({.op = "tag", .arg1 = end_label});
+
+        symbol.name = temp;
+        symbol.label = "";
+        symbol.type = SymbolType::VARIABLE;
+        symbol.data_type = expr1.data_type;
+    }
     return visitChildren(ctx);
 }
 
@@ -689,6 +777,8 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             auto arg = (suffix.type == SymbolType::LITERAL) ? suffix.value : suffix.label + suffix.name;
             // auto temp = "t" + std::to_string(temp_count++);
             optimize.push_back({.arg1 = arg, .result = "t0"});
+            optimize.push_back({.op = ">=", .arg1 = "t0", .arg2 = std::to_string(atom.dimentions.at(0)), .result = "err"});
+            optimize.push_back({.op = "iferr", .arg1 = "BAD_INDEX"});
             for (int i = 1; i < atom.dimentions.size(); i++) {
                 optimize.push_back({.op = "*", .arg1 = "t0", .arg2 = std::to_string(atom.dimentions.at(i)), .result = "t0"});
             }
