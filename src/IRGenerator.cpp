@@ -18,6 +18,7 @@ IRGenerator::IRGenerator(SymbolTable* table):
     end_label(),
     temp_count(0),
     label_count(0),
+    func_def(false),
     class_def(false) {}
 
 IRGenerator::~IRGenerator() {}
@@ -108,6 +109,9 @@ std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclar
         }
     }
 
+    if (func_def)
+        registry.push_back(dest.label + dest.name);
+
     return std::any();
 }
 
@@ -139,6 +143,9 @@ std::any IRGenerator::visitConstantDeclaration(CompiScriptParser::ConstantDeclar
             quadruplets.push_back({.arg1 = dest.value, .result = dest.label + dest.name});
         }
     }
+
+    if (func_def)
+        registry.push_back(dest.label + dest.name);
 
     return std::any();
 }
@@ -423,12 +430,19 @@ std::any IRGenerator::visitFunctionDeclaration(CompiScriptParser::FunctionDeclar
     auto function = table->lookup(ctx->Identifier()->getText()).first;
 
     quadruplets.push_back({.op = "begin", .arg1 = function.label + function.name});
-    for (auto arg: function.arg_list) 
-        quadruplets.push_back({.op = "param", .result = arg.label + arg.name});
+    for (auto arg: function.arg_list) {
+        quadruplets.push_back({.op = "pop", .result = arg.label + arg.name});
+        registry.push_back(arg.label + arg.name);
+    }
     
+    bool active = func_def;
+    func_def = true;
     visitBlock(ctx->block());
+    func_def = active;
 
     quadruplets.push_back({.op = "end", .arg1 = function.label + function.name});
+    registry.clear();
+
     return std::any();
 }
 
@@ -741,6 +755,9 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
     for (auto suffixOp: ctx->suffixOp()) {
         auto suffix = castSymbol(visit(suffixOp));
         if (atom.type == SymbolType::FUNCTION && suffix.type == SymbolType::ARGUMENT) {
+            for (auto data: registry)
+                optimize.push_back({.op = "push", .arg1 = data});
+
             for (auto it = suffix.arg_list.rbegin(); it != suffix.arg_list.rend(); it++) {
                 auto arg = (it->type == SymbolType::LITERAL) ? it->value : it->label + it->name;
                 optimize.push_back({.op = "push", .arg1 = arg});
@@ -754,6 +771,9 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
                 optimize.push_back({.op = "call", .arg1 = atom.label + atom.name});
             else 
                 optimize.push_back({.op = "call", .arg1 = atom.label + atom.name, .result = "ret"});
+
+            for (auto data: std::vector(registry.rbegin(), registry.rend()))
+                optimize.push_back({.op = "pop", .arg1 = data});
 
             atom.name = "ret";
             atom.label = "";

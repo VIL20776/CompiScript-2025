@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <stack>
 
 #include "CompiScriptBaseVisitor.h"
 #include "SymbolTable.h"
@@ -20,6 +21,7 @@ class IRGenerator: public CompiScriptBaseVisitor
 private:
 
     SymbolTable* table;
+    std::vector<std::string> registry;
     std::vector<Quad> quadruplets;
     std::vector<Quad> optimize;
     std::string begin_label;
@@ -27,6 +29,7 @@ private:
     int temp_count;
     int label_count;
     bool class_def;
+    bool func_def;
 
     void optimizeQuadruplets();
 

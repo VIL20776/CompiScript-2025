@@ -54,7 +54,7 @@ function crearContador(): integer {
                 )");
 
     std::string expected = R"(begin L0_saludar 
-L1_nombre = param  
+L1_nombre = pop  
 t0 = concat "Hola " L1_nombre
 return t0 
 end L0_saludar 
@@ -87,7 +87,7 @@ function factorial(n: integer): integer {
                 )");
 
     std::string expected = R"(begin L0_factorial 
-L1_n = param  
+L1_n = pop  
 t0 = <= L1_n 1
 if t0 l0
 goto l1
@@ -95,8 +95,10 @@ tag l0
 return 1 
 tag l1
 t0 = - L1_n 1
+push L1_n
 push t0
 ret = call L0_factorial
+pop L1_n
 t1 = * L1_n ret
 return t1
 end L0_factorial 
@@ -188,13 +190,13 @@ let perro = new Perro("Firulais");
 print(perro.hablar());
                 )");
     std::string expected = R"(begin L1_constructor 
-        L2_this = param
-        L2_nombre = param
+        L2_this = pop
+        L2_nombre = pop
         i = + L2_this 0
         i* = L2_nombre
         end L1_constructor
         begin L1_hablar  
-        L3_this = param  
+        L3_this = pop  
         i = + L3_this 0 
         t0 = concat i* " hace ruido." 
         return t0
@@ -209,7 +211,7 @@ print(perro.hablar());
         p = ret
         print
         begin L4_hablar
-        L5_this = param
+        L5_this = pop
         i = + L5_this 0
         t0 = concat i* " ladra."
         return t0
