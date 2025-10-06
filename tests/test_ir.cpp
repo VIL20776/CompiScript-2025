@@ -78,6 +78,38 @@ end L0_crearContador
     
 }
 
+TEST_CASE("Function with recursion code generation", "[Function gen]") {
+    auto generated_tac = test_ir_gen(R"(
+function factorial(n: integer): integer {
+  if (n <= 1) { return 1; }
+  return n * factorial(n - 1);
+}
+                )");
+
+    std::string expected = R"(begin L0_factorial 
+L1_n = param  
+t0 = <= L1_n 1
+if t0 l0
+goto l1
+tag l0
+return 1 
+tag l1
+t0 = - L1_n 1
+push t0
+ret = call L0_factorial
+t1 = * L1_n ret
+return t1
+end L0_factorial 
+)";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
+    
+}
+
 TEST_CASE("Array code generation", "[Array gen]") {
     auto generated_tac = test_ir_gen(R"(
 let lista = [1, 2, 3];
@@ -93,6 +125,8 @@ let num2 = matriz[0][1];
         i = + L0_lista 8
         i* =  3 
         t0 = 0 
+        err = >= t0 3
+        iferr BAD_INDEX
         t0 = * t0 4 
         i = + L0_lista t0       
         p = to_str i* 4
@@ -106,11 +140,15 @@ let num2 = matriz[0][1];
         i* =  3 
         i = + L0_matriz 12
         i* =  4 
-        t0 =  0 
+        t0 =  0
+        err = >= t0 2
+        iferr BAD_INDEX 
         t0 = * t0 2
         t0 = * t0 4
         i = + L0_matriz t0
-        t0 =  1 
+        t0 =  1
+        err = >= t0 2
+        iferr BAD_INDEX 
         t0 = * t0 4
         i = + i t0 
         L0_num2 =  i* 
@@ -295,6 +333,85 @@ foreach (n in notas) {
         t0 = < t0 16
         if t0 l2  
         tag l3
+    )";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
+}
+
+TEST_CASE("Try-Catch code generation", "[Error gen]") {
+    auto generated_tac = test_ir_gen(R"(
+let lista = [1, 2, 3, 4];
+try {
+  let peligro = lista[100];
+} catch (err) {
+  print("Error atrapado: " + err);
+}
+                )");
+    std::string expected = R"(L0_lista = alloc 16
+        i = + L0_lista 0
+        i* = 1
+        i = + L0_lista 4
+        i* = 2
+        i = + L0_lista 8
+        i* = 3
+        i = + L0_lista 12
+        i* = 4
+        catch = l0
+        t0=100 
+        err = >= t0 4 
+        iferr BAD_INDEX 
+        t0 = * t0 4  
+        i = + L0_lista t0 
+        L1_peligro = i* 
+        catch = 0  
+        begin l0 
+        L0_err = err 
+        t0 = concat "Error atrapado:" L0_err 
+        p = t0  
+        print 
+        end l0
+    )";
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_tac.erase(remove(generated_tac.begin(), generated_tac.end(), ' '), generated_tac.end());
+
+    REQUIRE(expected == generated_tac);
+}
+
+TEST_CASE("Switch-Case code generation", "[Switch gen]") {
+    auto generated_tac = test_ir_gen(R"(
+let x = 2;
+switch (x) {
+  case 1:
+    print("uno");
+  case 2:
+    print("dos");
+  default:
+    print("otro");
+}
+                )");
+    std::string expected = R"(L0_x = 2
+        switch = L0_x
+        case = == switch 1
+        ifnot case l0
+        p = "uno"
+        print
+        goto l2  
+        tag l0
+        case = == switch 2
+        ifnot case l1
+        p = "dos"
+        print
+        goto l2 
+        tag l1
+        p = "otro"
+        print
+        tag l2
     )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
