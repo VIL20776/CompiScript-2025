@@ -468,7 +468,7 @@ std::any SemanticChecker::visitReturnStatement(CompiScriptParser::ReturnStatemen
         auto symbol_return = castSymbol(visitExpression(ctx->expression()));
 
         if (symbol_return.data_type != func_symbol.data_type ||
-            symbol_return.dimentions != func_symbol.dimentions)
+            symbol_return.dimentions.size() != func_symbol.dimentions.size())
         {
             std::println(stderr, "Error in line {}: Invalid return type.",
                              ctx->getStart()->getLine());

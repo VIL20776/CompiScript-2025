@@ -5,6 +5,7 @@
 #include "CompiScriptParser.h"
 #include "CompiScriptLexer.h"
 #include "SemanticChecker.h"
+#include "IRGenerator.h"
 
 int main (int argc, char** argv) {
     using namespace CompiScript;
@@ -27,7 +28,16 @@ int main (int argc, char** argv) {
     antlr4::CommonTokenStream tokens(&lexer);
     CompiScriptParser parser(&tokens);
     SemanticChecker checker;
-    checker.visitProgram(parser.program());
+    checker.visitProgram(parser.program()); 
+
+    auto table = checker.getSymbolTable();
+    auto ir = CompiScript::IRGenerator(&table);
+
+    auto input2 = antlr4::ANTLRInputStream(stream);
+    CompiScript::CompiScriptLexer lexer2(&input2);
+    antlr4::CommonTokenStream tokens2(&lexer2);
+    CompiScript::CompiScriptParser parser2(&tokens2);
+    ir.visitProgram(parser2.program());
 
     for (int i = 2; i < argc; i++) {
         std::string option(argv[i]);
@@ -35,6 +45,15 @@ int main (int argc, char** argv) {
             auto table = checker.getSymbolTable();
             table.printTables();
         }
+        if (option == "-tac") {
+
+            std::println("{}", ir.getTAC().c_str());
+
+            std::ofstream file("tac.ir");
+            file << ir.getTAC();
+        }
     }
+
+    stream.close();
     return 0;
 }

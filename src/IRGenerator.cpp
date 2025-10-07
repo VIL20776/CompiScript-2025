@@ -1,4 +1,5 @@
 #include <sstream>
+#include <print>
 #include <string>
 #include <regex>
 #include <any>
@@ -69,6 +70,7 @@ std::any IRGenerator::visitProgram(CompiScriptParser::ProgramContext *ctx) {
 }
 
 std::any IRGenerator::visitStatement(CompiScriptParser::StatementContext *ctx) {
+    std::println("{}", ctx->getText().c_str());
     return visitChildren(ctx);
 }
 
