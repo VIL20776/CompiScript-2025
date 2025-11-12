@@ -36,6 +36,10 @@ void IRGenerator::optimizeQuadruplets() {
     optimize.clear();
 }
 
+const std::vector<Quad>& IRGenerator::getQuadruplets() {
+    return quadruplets;
+}
+
 int IRGenerator::getSymbolSize(Symbol symbol) {
     switch (symbol.data_type) {
         case SymbolDataType::STRING:
@@ -70,7 +74,7 @@ std::any IRGenerator::visitProgram(CompiScriptParser::ProgramContext *ctx) {
 }
 
 std::any IRGenerator::visitStatement(CompiScriptParser::StatementContext *ctx) {
-    std::println("{}", ctx->getText().c_str());
+    // std::println("{}", ctx->getText().c_str());
     return visitChildren(ctx);
 }
 
@@ -323,24 +327,27 @@ std::any IRGenerator::visitForeachStatement(CompiScriptParser::ForeachStatementC
     auto arg = expr.label + expr.name;
     auto target = table->lookup(ctx->Identifier()->getText()).first;
 
-    if (target.dimentions.empty())
-        optimize.push_back({.arg1 = arg + "*", .result = target.label + target.name});
-    else
-        optimize.push_back({.arg1 = arg, .result = target.label + target.name});
     optimizeQuadruplets();
     temp_count = 0;
+
+    quadruplets.push_back({.arg1 = arg, .result = "i"});
+    quadruplets.push_back({.op = "tag", .arg1 = begin_label});
+    if (target.dimentions.empty())
+        quadruplets.push_back({.arg1 = "i*", .result = target.label + target.name});
+    else
+        quadruplets.push_back({.arg1 = "i", .result = target.label + target.name});
 
     int limit = expr.size;
     int offset = getSymbolSize(expr);
     for (auto i = 1; i < expr.dimentions.size(); i++)
         offset *= expr.dimentions.at(i);
 
-    quadruplets.push_back({.op = "tag", .arg1 = begin_label});
 
     visitBlock(ctx->block());
 
-    quadruplets.push_back({.op = "+", .arg1 = arg, .arg2 = std::to_string(offset), .result = "t0"});
-    quadruplets.push_back({.op = "<", .arg1 = "t0", .arg2 = std::to_string(limit), .result = "t0"});
+    quadruplets.push_back({.op = "+", .arg1 = arg, .arg2 = std::to_string(offset), .result = "i"});
+    quadruplets.push_back({.op = "+", .arg1 = arg, .arg2 = std::to_string(limit), .result = "t0"});
+    quadruplets.push_back({.op = "<", .arg1 = "i", .arg2 = "t0", .result = "t0"});
     quadruplets.push_back({.op = "if", .arg1 = "t0", .arg2 = begin_label});
 
     quadruplets.push_back({.op = "tag", .arg1 = end_label});

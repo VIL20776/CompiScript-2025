@@ -1,4 +1,3 @@
 #!/bin/bash
-cmake -S . -B build/
-cmake --build build/
-./build/tests
+cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/debug && ./build/debug/tests

@@ -39,6 +39,8 @@ public:
 
     std::string getTAC();
 
+    const std::vector<Quad>& getQuadruplets();
+
     int getSymbolSize(Symbol symbol);
 
     std::any visitProgram(CompiScriptParser::ProgramContext *ctx); 

@@ -2,8 +2,6 @@
 
 #include <print>
 
-#include "SemanticChecker.h"
-
 #include "test.h"
 
 using namespace CompiScript;
@@ -18,15 +16,15 @@ let z = (1 + 2) * 3;
 
     std::string expected = R"(t0 = * 3 2
 t1 = + 5 t0
-L0_x =  t1 
-t0 = < L0_x 10
-t1 = > L0_x 20
+W0_x =  t1 
+t0 = < W0_x 10
+t1 = > W0_x 20
 t2 = || t0 t1
 t3 = ! t2 
-L0_y =  t3 
+B0_y =  t3 
 t0 = + 1 2
 t1 = * t0 3
-L0_z =  t1 
+W0_z =  t1 
 )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
@@ -53,21 +51,21 @@ function crearContador(): integer {
 }
                 )");
 
-    std::string expected = R"(begin L0_saludar 
-L1_nombre = pop  
-t0 = concat "Hola " L1_nombre
+    std::string expected = R"(begin F0_saludar 
+W1_nombre = pop  
+t0 = concat "Hola " W1_nombre
 return t0 
-end L0_saludar 
+end F0_saludar 
 push "Mundo" 
-ret = call L0_saludar 
-L0_mensaje =  ret 
-begin L0_crearContador 
-begin L2_siguiente 
+ret = call F0_saludar 
+W0_mensaje =  ret 
+begin F0_crearContador 
+begin F2_siguiente 
 return 1 
-end L2_siguiente 
-ret = call L2_siguiente 
+end F2_siguiente 
+ret = call F2_siguiente 
 return ret 
-end L0_crearContador 
+end F0_crearContador 
 )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
@@ -86,22 +84,22 @@ function factorial(n: integer): integer {
 }
                 )");
 
-    std::string expected = R"(begin L0_factorial 
-L1_n = pop  
-t0 = <= L1_n 1
+    std::string expected = R"(begin F0_factorial 
+W1_n = pop  
+t0 = <= W1_n 1
 if t0 l0
 goto l1
 tag l0
 return 1 
 tag l1
-t0 = - L1_n 1
-push L1_n
+t0 = - W1_n 1
+push W1_n
 push t0
-ret = call L0_factorial
-pop L1_n
-t1 = * L1_n ret
+ret = call F0_factorial
+pop W1_n
+t1 = * W1_n ret
 return t1
-end L0_factorial 
+end F0_factorial 
 )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
@@ -119,41 +117,41 @@ print(lista[0]);
 let matriz = [[1, 2], [3, 4]];
 let num2 = matriz[0][1];
                 )");
-    std::string expected = R"(L0_lista = alloc 12 
-        i = + L0_lista 0
+    std::string expected = R"(S0_lista = alloc 12 
+        i = + S0_lista 0
         i* =  1 
-        i = + L0_lista 4
+        i = + S0_lista 4
         i* =  2 
-        i = + L0_lista 8
+        i = + S0_lista 8
         i* =  3 
         t0 = 0 
         err = >= t0 3
         iferr BAD_INDEX
         t0 = * t0 4 
-        i = + L0_lista t0       
+        i = + S0_lista t0       
         p = to_str i* 4
         print
-        L0_matriz = alloc 16 
-        i = + L0_matriz 0
+        S0_matriz = alloc 16 
+        i = + S0_matriz 0
         i* =  1 
-        i = + L0_matriz 4
+        i = + S0_matriz 4
         i* =  2 
-        i = + L0_matriz 8
+        i = + S0_matriz 8
         i* =  3 
-        i = + L0_matriz 12
+        i = + S0_matriz 12
         i* =  4 
         t0 =  0
         err = >= t0 2
         iferr BAD_INDEX 
         t0 = * t0 2
         t0 = * t0 4
-        i = + L0_matriz t0
+        i = + S0_matriz t0
         t0 =  1
         err = >= t0 2
         iferr BAD_INDEX 
         t0 = * t0 4
         i = + i t0 
-        L0_num2 =  i* 
+        W0_num2 =  i* 
     )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
@@ -189,40 +187,40 @@ class Perro: Animal {
 let perro = new Perro("Firulais");
 print(perro.hablar());
                 )");
-    std::string expected = R"(begin L1_constructor 
-        L2_this = pop
-        L2_nombre = pop
-        i = + L2_this 0
-        i* = L2_nombre
-        end L1_constructor
-        begin L1_hablar  
-        L3_this = pop  
-        i = + L3_this 0 
+    std::string expected = R"(begin F1_constructor 
+        W2_this = pop
+        W2_nombre = pop
+        i = + W2_this 0
+        i* = W2_nombre
+        end F1_constructor
+        begin F1_hablar  
+        W3_this = pop  
+        i = + W3_this 0 
         t0 = concat i* " hace ruido." 
         return t0
-        end L1_hablar
+        end F1_hablar
         t0 = alloc 4 
         push "Firulais"
         push t0  
-        call L1_constructor 
-        L0_animal = t0
-        push L0_animal
-        ret = call L1_hablar
+        call F1_constructor 
+        W0_animal = t0
+        push W0_animal
+        ret = call F1_hablar
         p = ret
         print
-        begin L4_hablar
-        L5_this = pop
-        i = + L5_this 0
+        begin F4_hablar
+        W5_this = pop
+        i = + W5_this 0
         t0 = concat i* " ladra."
         return t0
-        end L4_hablar
+        end F4_hablar
         t0 = alloc 4 
         push "Firulais"
         push t0  
-        call L1_constructor 
-        L0_perro = t0
-        push L0_perro
-        ret = call L4_hablar
+        call F1_constructor 
+        W0_perro = t0
+        push W0_perro
+        ret = call F4_hablar
         p = ret
         print
     )";
@@ -251,8 +249,8 @@ do {
   x = x - 1;
 } while (x > 0);
                 )");
-    std::string expected = R"(L0_x = 4
-        t0 = > L0_x 10
+    std::string expected = R"(W0_x = 4
+        t0 = > W0_x 10
         if t0 l0
         goto l1
         tag l0
@@ -262,16 +260,16 @@ do {
         p = "Menor o igual"
         print
         tag l2
-        t0 = < L0_x 5
+        t0 = < W0_x 5
         ifnot t0 l3
-        t0 = + L0_x 1
-        L0_x = t0
+        t0 = + W0_x 1
+        W0_x = t0
         goto l2
         tag l3
         tag l4
-        t0 = - L0_x 1
-        L0_x = t0
-        t0 = > L0_x 0
+        t0 = - W0_x 1
+        W0_x = t0
+        t0 = > W0_x 0
         if t0 l4
         tag l5
     )";
@@ -296,43 +294,45 @@ foreach (n in notas) {
   print(n);
 }
                 )");
-    std::string expected = R"(L0_i = 0
+    std::string expected = R"(W0_i = 0
         tag l0
-        t0 = < L0_i 3
+        t0 = < W0_i 3
         ifnot t0 l1
-        p = to_str L0_i 4
+        p = to_str W0_i 4
         print
-        t0 = + L0_i 1
-        L0_i = t0
+        t0 = + W0_i 1
+        W0_i = t0
         goto l0
         tag l1
-        L0_notas = alloc 16
-        i = + L0_notas 0
+        S0_notas = alloc 16
+        i = + S0_notas 0
         i* = 40
-        i = + L0_notas 4
+        i = + S0_notas 4
         i* = 60
-        i = + L0_notas 8
+        i = + S0_notas 8
         i* = 80
-        i = + L0_notas 12
+        i = + S0_notas 12
         i* = 100
-        L0_n = L0_notas*
+        i = S0_notas
         tag l2   
-        t0 = < L0_n 60
+        W0_n = i*
+        t0 = < W0_n 60
         if t0 l4  
         goto l5  
         tag l4   
         goto l2  
         tag l5   
-        t0 = == L0_n 100
+        t0 = == W0_n 100
         if t0 l6  
         goto l7  
         tag l6   
         goto l3  
         tag l7   
-        p = to_str L0_n 4
+        p = to_str W0_n 4
         print   
-        t0 = + L0_notas 4
-        t0 = < t0 16
+        i = + S0_notas 4
+        t0 = + S0_notas 16
+        t0 = < i t0
         if t0 l2  
         tag l3
     )";
@@ -353,26 +353,26 @@ try {
   print("Error atrapado: " + err);
 }
                 )");
-    std::string expected = R"(L0_lista = alloc 16
-        i = + L0_lista 0
+    std::string expected = R"(S0_lista = alloc 16
+        i = + S0_lista 0
         i* = 1
-        i = + L0_lista 4
+        i = + S0_lista 4
         i* = 2
-        i = + L0_lista 8
+        i = + S0_lista 8
         i* = 3
-        i = + L0_lista 12
+        i = + S0_lista 12
         i* = 4
         catch = l0
         t0=100 
         err = >= t0 4 
         iferr BAD_INDEX 
         t0 = * t0 4  
-        i = + L0_lista t0 
-        L1_peligro = i* 
+        i = + S0_lista t0 
+        W1_peligro = i* 
         catch = 0  
         begin l0 
-        L0_err = err 
-        t0 = concat "Error atrapado:" L0_err 
+        W0_err = err 
+        t0 = concat "Error atrapado:" W0_err 
         p = t0  
         print 
         end l0
@@ -397,8 +397,8 @@ switch (x) {
     print("otro");
 }
                 )");
-    std::string expected = R"(L0_x = 2
-        switch = L0_x
+    std::string expected = R"(W0_x = 2
+        switch = W0_x
         case = == switch 1
         ifnot case l0
         p = "uno"
