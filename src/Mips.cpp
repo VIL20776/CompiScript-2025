@@ -1,6 +1,7 @@
 #include <regex>
 #include <print>
 #include <string>
+#include <stack>
 #include <set>
 
 #include "Mips.h"
@@ -19,25 +20,25 @@ std::string Mips::generateDataSection() {
     int string_count = 0;
     std::set<std::string> variables;
     for (auto &quad: quadruplets) {
-        if (quad.result.empty() || variables.contains(quad.result)) continue;
-
-        // Skip functions
-        if (quad.result.starts_with("F")) continue;
 
         // Handle strings
         if (std::regex_match(quad.arg1, string_regex)) {
-            auto string_declaration = "str" + std::to_string(string_count++) + ":\t\t.asciiz\t" + quad.arg1 + "\n";
-            quad.arg1 = string_declaration;
+            auto string_var = "str" + std::to_string(string_count++);
+            auto string_declaration = string_var + ":\t\t.asciiz\t" + quad.arg1 + "\n";
+            quad.arg1 = string_var;
             data_section += string_declaration;
         }
 
         if (std::regex_match(quad.arg2, string_regex)) {
-            auto string_declaration = "str" + std::to_string(string_count++) + ":\t\t.asciiz\t" + quad.arg2 + "\n";
-            quad.arg2 = string_declaration;
+            auto string_var = "str" + std::to_string(string_count++);
+            auto string_declaration = string_var + ":\t\t.asciiz\t" + quad.arg2 + "\n";
+            quad.arg2 = string_var;
             data_section += string_declaration;
         }
 
         // Handle variables
+        if (quad.result.empty() || variables.contains(quad.result)) continue;
+
         std::string var_declaration;
         if (quad.result.starts_with("W")) {
             var_declaration = quad.result + ":\t\t.word\t";
@@ -55,8 +56,9 @@ std::string Mips::generateDataSection() {
             else 
                 var_declaration += "0\n";
         }
-        if (quad.result.starts_with("S") && quad.op == "alloc") {
-            var_declaration = quad.result + ":\t\t.space\t" + quad.arg1 + "\n";
+        if (quad.result.starts_with("S")) {
+            auto storage_type = (quad.op == "alloc") ? ":\t\t.space\t"+ quad.arg1: ":\t\t.word\t0";
+            var_declaration = quad.result + storage_type + "\n";
         }
 
         variables.insert(quad.result);
@@ -100,7 +102,9 @@ Register Mips::spill_or_assign(const std::string &var) {
 }
 
 Register Mips::getRegister(const std::string &var) {
-    if (var.empty()) return Register{};
+    if (var.empty() || var.starts_with("l")) return Register{};
+
+    if (var == "ret") return Register{"$v0", ""};
     // Find var in register descriptors
     for (int i = 0; i < temporaries.size(); i++) {
         if (var == temporaries.at(i))
@@ -110,6 +114,11 @@ Register Mips::getRegister(const std::string &var) {
     for (int i = 0; i < saved.size(); i++) {
         if (var == saved.at(i))
             return {"$s" + std::to_string(i), ""};
+    }
+
+    for (int i = 0; i < args.size(); i++) {
+        if (var == args.at(i))
+            return {"$a" + std::to_string(i), ""};
     }
 
     // find empty register in apropiate descriptor
@@ -137,10 +146,47 @@ Register Mips::getRegister(const std::string &var) {
 }
 
 std::string Mips::generateTextSection() {
-    std::string text_section;
+    std::stack<std::string> subrutine_sections;
+    std::string text_section = "main:\n";
+    int arg_count = 0;
     for (auto quad: quadruplets) {
         if (quad.result == "t0") 
             for (auto &reg: temporaries) if (reg.starts_with("t")) reg.clear(); 
+
+        if (quad.op == "tag") {
+            text_section += quad.arg1 + ":\n";
+            continue;
+        }
+
+        if (quad.op == "begin") {
+            subrutine_sections.push(text_section);
+            text_section.clear();
+            text_section += quad.arg1 + ":\n";
+            continue;
+        }
+
+        if (quad.op == "end") {
+            if (!text_section.ends_with("jr $ra\n\n")) text_section += "jr $ra\n\n";
+            text_section += subrutine_sections.top();
+            subrutine_sections.pop();
+            continue;
+        }
+        if (quad.op == "call") {
+            text_section += "addi $sp, -4\n";
+            text_section += "sw $ra, ($sp)\n";
+            text_section += "jal " + quad.arg1 + "\n";
+            text_section += "lw $ra, ($sp)\n";
+            text_section += "addi $sp, 4\n";
+            continue;
+        }
+        if (quad.op == "goto") {
+            text_section += "b " + quad.arg1 + "\n";
+            continue;
+        }
+        if (quad.op == "arg") {
+            args.at(arg_count++) = quad.arg1;
+            continue;
+        }
 
         auto ry = getRegister(quad.arg1);
         auto rz = getRegister(quad.arg2);
@@ -154,6 +200,59 @@ std::string Mips::generateTextSection() {
                 std::string inst = (quad.result.starts_with("B")) ? "sb ": "sw ";
                 text_section += inst + rx.reg + ", " + quad.result + "\n";
             }
+            continue;
+        }
+        if (op == "return") {
+            text_section += "move $v0, " + ry.reg + "\n";
+            text_section += "jr $ra\n\n";
+            continue;
+        }
+        if (op == "if") {
+            text_section += "bne $zero, " + ry.reg + ", " + quad.arg2 +"\n";
+            continue;        
+        }
+        if (op == "ifnot") {
+            text_section += "beq $zero, " + ry.reg + ", " + quad.arg2 +"\n";
+            continue;        
+        }
+        if (op == "param") {
+            auto arg_reg = "$a" + std::to_string(arg_count++);
+            text_section += "move " + arg_reg + ", " + ry.reg + "\n";
+            continue;
+        }
+        if (op == "push") {
+            text_section += "addi $sp, -4\n";
+            text_section += "sw " + ry.reg + ", ($sp)\n";
+            continue;
+        }
+        if (op == "pop") {
+            text_section += "lw " + ry.reg + ", ($sp)\n";
+            text_section += "addi $sp, 4\n";
+            continue;
+        }
+        if (op == "concat") {
+            text_section += "addi $sp, -4\n";
+            text_section += "sw $a0, ($sp)\n";
+            text_section += "addi $sp, -4\n";
+            text_section += "sw $a1, ($sp)\n";
+            text_section += "move $a0, " + ry.reg + "\n";
+
+            if (rz.reg == "$a0")
+                text_section += "lw $a1, 4($sp)\n";
+            else
+                text_section += "move $a1, " + rz.reg + "\n";
+
+            text_section += "addi $sp, -4\n";
+            text_section += "sw $ra, ($sp)\n";
+            text_section += "# jal concat_strings\n";
+            text_section += "lw $ra, ($sp)\n";
+            text_section += "addi $sp, 4\n";
+            text_section += "lw $a1, ($sp)\n";
+            text_section += "addi $sp, 4\n";
+            text_section += "lw $a0, ($sp)\n";
+            text_section += "addi $sp, 4\n";
+            text_section += "move " + rx.reg + ", $v0\n";
+            continue;
         }
         if (op == "+") text_section += "add " + rx.reg + ", " + ry.reg + ", " + rz.reg + "\n";
         if (op == "-") text_section += "sub " + rx.reg + ", " + ry.reg + ", " + rz.reg + "\n";
@@ -177,6 +276,7 @@ std::string Mips::generateTextSection() {
 
         // Clear registers with inmediate values
         for (auto &reg: temporaries) if (std::regex_match(reg, std::regex("[0-9]+"))) reg.clear();
+        if (arg_count > 0) arg_count = 0;
     }
     return text_section + "\n";
 }
@@ -184,7 +284,7 @@ std::string Mips::generateTextSection() {
 std::string Mips::generateAssembly() {
     assembly += ".data\n";
     assembly += generateDataSection();
-    assembly += ".text\nmain:\n";
+    assembly += ".text\n";
     assembly += generateTextSection();
 
     return assembly;

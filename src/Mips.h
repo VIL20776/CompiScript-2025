@@ -20,6 +20,7 @@ class Mips {
 
     std::array<std::string, 8> temporaries;
     std::array<std::string, 8> saved;
+    std::array<std::string, 4> args;
 
     std::unordered_multimap<std::string, std::string> variables;
 
