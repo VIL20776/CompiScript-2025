@@ -52,18 +52,18 @@ function crearContador(): integer {
                 )");
 
     std::string expected = R"(begin F0_saludar 
-W1_nombre = pop  
-t0 = concat "Hola " W1_nombre
+arg S1_nombre
+t0 = concat "Hola " S1_nombre
 return t0 
 end F0_saludar 
-push "Mundo" 
-ret = call F0_saludar 
-W0_mensaje =  ret 
+param "Mundo" 
+call F0_saludar 
+S0_mensaje =  ret 
 begin F0_crearContador 
 begin F2_siguiente 
 return 1 
 end F2_siguiente 
-ret = call F2_siguiente 
+call F2_siguiente 
 return ret 
 end F0_crearContador 
 )";
@@ -85,7 +85,7 @@ function factorial(n: integer): integer {
                 )");
 
     std::string expected = R"(begin F0_factorial 
-W1_n = pop  
+arg  W1_n
 t0 = <= W1_n 1
 if t0 l0
 goto l1
@@ -94,8 +94,8 @@ return 1
 tag l1
 t0 = - W1_n 1
 push W1_n
-push t0
-ret = call F0_factorial
+param t0
+call F0_factorial
 pop W1_n
 t1 = * W1_n ret
 return t1
@@ -188,39 +188,39 @@ let perro = new Perro("Firulais");
 print(perro.hablar());
                 )");
     std::string expected = R"(begin F1_constructor 
-        W2_this = pop
-        W2_nombre = pop
-        i = + W2_this 0
-        i* = W2_nombre
+        arg S2_this
+        arg S2_nombre
+        i = + S2_this 0
+        i* = S2_nombre
         end F1_constructor
         begin F1_hablar  
-        W3_this = pop  
-        i = + W3_this 0 
+        arg S3_this  
+        i = + S3_this 0 
         t0 = concat i* " hace ruido." 
         return t0
         end F1_hablar
         t0 = alloc 4 
-        push "Firulais"
-        push t0  
+        param t0  
+        param "Firulais"
         call F1_constructor 
-        W0_animal = t0
-        push W0_animal
-        ret = call F1_hablar
+        S0_animal = t0
+        param S0_animal
+        call F1_hablar
         p = ret
         print
         begin F4_hablar
-        W5_this = pop
-        i = + W5_this 0
+        arg S5_this 
+        i = + S5_this 0
         t0 = concat i* " ladra."
         return t0
         end F4_hablar
         t0 = alloc 4 
-        push "Firulais"
-        push t0  
+        param t0  
+        param "Firulais"
         call F1_constructor 
-        W0_perro = t0
-        push W0_perro
-        ret = call F4_hablar
+        S0_perro = t0
+        param S0_perro
+        call F4_hablar
         p = ret
         print
     )";
@@ -371,8 +371,8 @@ try {
         W1_peligro = i* 
         catch = 0  
         begin l0 
-        W0_err = err 
-        t0 = concat "Error atrapado:" W0_err 
+        S0_err = err 
+        t0 = concat "Error atrapado:" S0_err 
         p = t0  
         print 
         end l0

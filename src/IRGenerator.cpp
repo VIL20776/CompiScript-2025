@@ -440,7 +440,7 @@ std::any IRGenerator::visitFunctionDeclaration(CompiScriptParser::FunctionDeclar
 
     quadruplets.push_back({.op = "begin", .arg1 = function.label + function.name});
     for (auto arg: function.arg_list) {
-        quadruplets.push_back({.op = "pop", .result = arg.label + arg.name});
+        quadruplets.push_back({.op = "arg", .arg1 = arg.label + arg.name});
         registry.push_back(arg.label + arg.name);
     }
     
@@ -767,19 +767,16 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             for (auto data: registry)
                 optimize.push_back({.op = "push", .arg1 = data});
 
-            for (auto it = suffix.arg_list.rbegin(); it != suffix.arg_list.rend(); it++) {
-                auto arg = (it->type == SymbolType::LITERAL) ? it->value : it->label + it->name;
-                optimize.push_back({.op = "push", .arg1 = arg});
+            for (auto &data: suffix.arg_list) {
+                auto arg = (data.type == SymbolType::LITERAL) ? data.value : data.label + data.name;
+                optimize.push_back({.op = "param", .arg1 = arg});
             }
             if (!self.name.empty()) {
-                optimize.push_back({.op = "push", .arg1 = self.label + self.name});
+                optimize.push_back({.op = "param", .arg1 = self.label + self.name});
                 self.name = "";
             }
              
-            if (atom.data_type == SymbolDataType::NIL) 
-                optimize.push_back({.op = "call", .arg1 = atom.label + atom.name});
-            else 
-                optimize.push_back({.op = "call", .arg1 = atom.label + atom.name, .result = "ret"});
+            optimize.push_back({.op = "call", .arg1 = atom.label + atom.name});
 
             for (auto data: std::vector(registry.rbegin(), registry.rend()))
                 optimize.push_back({.op = "pop", .arg1 = data});
@@ -836,14 +833,14 @@ std::any IRGenerator::visitNewExpr(CompiScriptParser::NewExprContext *ctx) {
     auto temp = "t" + std::to_string(temp_count++);
 
     optimize.push_back({.op = "alloc", .arg1 = std::to_string(class_symbol.size), .result = temp});
+    optimize.push_back({.op = "param", .arg1 = temp});
     if (ctx->arguments() != nullptr) {
         auto args = castSymbol(visitArguments(ctx->arguments()));
-        for (auto it = args.arg_list.rbegin(); it != args.arg_list.rend(); it++) {
-            auto arg = (it->type == SymbolType::LITERAL) ? it->value : it->label + it->name;
-            optimize.push_back({.op = "push", .arg1 = arg});
+        for (auto &data :args.arg_list) {
+            auto arg = (data.type == SymbolType::LITERAL) ? data.value : data.label + data.name;
+            optimize.push_back({.op = "param", .arg1 = arg});
         }
     }
-    optimize.push_back({.op = "push", .arg1 = temp});
     optimize.push_back({.op = "call", .arg1 = constructor.label + constructor.name});
 
     Symbol new_symbol = {

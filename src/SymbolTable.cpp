@@ -50,8 +50,8 @@ SymbolTable::~SymbolTable()
 void SymbolTable::insert(const Symbol &symbol) {
     auto new_symbol = symbol;
     new_symbol.label = 
-        (!symbol.dimentions.empty()) ? "S" + std::to_string(current.lock()->id) + "_" :
         (symbol.type == SymbolType::FUNCTION) ? "F" + std::to_string(current.lock()->id) + "_" :
+        (!symbol.dimentions.empty() || symbol.data_type == SymbolDataType::STRING || symbol.data_type == SymbolDataType::OBJECT) ? "S" + std::to_string(current.lock()->id) + "_" :
         (symbol.data_type == SymbolDataType::BOOLEAN || symbol.data_type == SymbolDataType::NIL) ? "B" + std::to_string(current.lock()->id) + "_" :
         "W" + std::to_string(current.lock()->id) + "_" 
 ;
