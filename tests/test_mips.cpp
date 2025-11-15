@@ -115,7 +115,7 @@ jr $ra
 
 main:
 la $t2, str1
-move $a1, $t2
+move $a0, $t2
 addi $sp, -4
 sw $ra, ($sp)
 jal F0_saludar
@@ -126,9 +126,9 @@ sw $s0, S0_mensaje
 
 )";
 
-    std::ofstream out("output.s", std::ofstream::out);
-    out << generated_mips;
-    out.close();
+    // std::ofstream out("output.s", std::ofstream::out);
+    // out << generated_mips;
+    // out.close();
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
     expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
@@ -162,6 +162,7 @@ move $v0, $t0
 jr $ra
 
 l1:
+li $t0, 1
 sub $t1, $a0, $t0
 addi $sp, -4
 sw $a0, ($sp)
@@ -201,4 +202,60 @@ sw $s0, W0_fac
     generated_mips.erase(remove(generated_mips.begin(), generated_mips.end(), '\t'), generated_mips.end());
 
     REQUIRE(expected == generated_mips);
+}
+
+TEST_CASE("Array asm generation", "[Array asm]") {
+    auto generated_mips = test_mips_gen(R"(
+let lista = [1, 2, 3];
+print(lista[0]);
+let matriz = [[1, 2], [3, 4]];
+let num2 = matriz[0][1];
+                )");
+    std::string expected = R"(S0_lista = alloc 12 
+        i = + S0_lista 0
+        i* =  1 
+        i = + S0_lista 4
+        i* =  2 
+        i = + S0_lista 8
+        i* =  3 
+        t0 = 0 
+        err = >= t0 3
+        iferr BAD_INDEX
+        t0 = * t0 4 
+        i = + S0_lista t0       
+        p = to_str i* 4
+        print
+        S0_matriz = alloc 16 
+        i = + S0_matriz 0
+        i* =  1 
+        i = + S0_matriz 4
+        i* =  2 
+        i = + S0_matriz 8
+        i* =  3 
+        i = + S0_matriz 12
+        i* =  4 
+        t0 =  0
+        err = >= t0 2
+        iferr BAD_INDEX 
+        t0 = * t0 2
+        t0 = * t0 4
+        i = + S0_matriz t0
+        t0 =  1
+        err = >= t0 2
+        iferr BAD_INDEX 
+        t0 = * t0 4
+        i = + i t0 
+        W0_num2 =  i* 
+    )";
+
+    std::ofstream out("output.s", std::ofstream::out);
+    out << generated_mips;
+    out.close();
+
+    expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
+    expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
+    generated_mips.erase(remove(generated_mips.begin(), generated_mips.end(), ' '), generated_mips.end());
+    generated_mips.erase(remove(generated_mips.begin(), generated_mips.end(), '\t'), generated_mips.end());
+
+    // REQUIRE(expected == generated_mips);
 }
