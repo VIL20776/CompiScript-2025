@@ -40,7 +40,7 @@ const std::vector<Quad>& IRGenerator::getQuadruplets() {
     return quadruplets;
 }
 
-int IRGenerator::getSymbolSize(Symbol symbol) {
+int IRGenerator::getSymbolSize(const Symbol &symbol) {
     switch (symbol.data_type) {
         case SymbolDataType::STRING:
         case SymbolDataType::INTEGER:
@@ -55,6 +55,13 @@ int IRGenerator::getSymbolSize(Symbol symbol) {
         default:
             return 0;
     }
+}
+
+std::string IRGenerator::getStorageType(const Symbol &symbol) {
+    if (symbol.data_type == SymbolDataType::BOOLEAN || symbol.data_type == SymbolDataType::NIL)
+        return "b";
+
+    return "w";
 }
 
 std::string IRGenerator::getTAC() {
@@ -107,7 +114,7 @@ std::any IRGenerator::visitVariableDeclaration(CompiScriptParser::VariableDeclar
                 if (value.empty()) continue;
 
                 quadruplets.push_back({.op = "+", .arg1 = dest.label + dest.name, .arg2 = std::to_string(offset), .result = "i"});
-                quadruplets.push_back({.arg1 = value, .result = "i*"});
+                quadruplets.push_back({.arg1 = value, .result = "i*" + getStorageType(dest)});
                 offset += type_size;
             }
         } else {
@@ -142,7 +149,7 @@ std::any IRGenerator::visitConstantDeclaration(CompiScriptParser::ConstantDeclar
                 if (value.empty()) continue;
 
                 quadruplets.push_back({.op = "+", .arg1 = dest.label + dest.name, .arg2 = std::to_string(offset), .result = "i"});
-                quadruplets.push_back({.arg1 = value, .result = "i*"});
+                quadruplets.push_back({.arg1 = value, .result = "i*" + getStorageType(dest)});
                 offset += type_size;
             }
         } else {
@@ -172,7 +179,7 @@ std::any IRGenerator::visitAssignment(CompiScriptParser::AssignmentContext *ctx)
         auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.label + source.name;
 
         optimize.push_back({.op = "+", .arg1 = target.label + target.name, .arg2 = std::to_string(prop.offset), .result = "i"});
-        optimize.push_back({.arg1 = arg, .result = "i*"});
+        optimize.push_back({.arg1 = arg, .result = "i*" + getStorageType(prop)});
     } else {
         auto target = table->lookup(ctx->Identifier()->getText(), false).first;
         auto source = castSymbol(visitExpression(ctx->expression().at(0)));
@@ -333,7 +340,7 @@ std::any IRGenerator::visitForeachStatement(CompiScriptParser::ForeachStatementC
     quadruplets.push_back({.arg1 = arg, .result = "i"});
     quadruplets.push_back({.op = "tag", .arg1 = begin_label});
     if (target.dimentions.empty())
-        quadruplets.push_back({.arg1 = "i*", .result = target.label + target.name});
+        quadruplets.push_back({.arg1 = "i*" + getStorageType(target), .result = target.label + target.name});
     else
         quadruplets.push_back({.arg1 = "i", .result = target.label + target.name});
 
@@ -501,7 +508,7 @@ std::any IRGenerator::visitPropertyAssignExpr(CompiScriptParser::PropertyAssignE
     auto arg = (source.type == SymbolType::LITERAL) ? source.value : source.label + source.name;
 
     optimize.push_back({.op = "+", .arg1 = target.label + target.name, .arg2 = std::to_string(prop.offset), .result = "i"});
-    optimize.push_back({.arg1 = arg, .result = "i*"});
+    optimize.push_back({.arg1 = arg, .result = "i*" + getStorageType(prop)});
 
     return prop;
 }
@@ -791,7 +798,7 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             if (prop.type != SymbolType::FUNCTION) {
                 optimize.push_back({.op = "+", .arg1 = atom.label + atom.name, .arg2 = std::to_string(prop.offset), .result = "i"});
                 atom = prop;
-                atom.name = "i*";
+                atom.name = "i*" + getStorageType(prop);
                 atom.label = "";
             } else {
                 self = atom;
@@ -804,7 +811,7 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             // auto temp = "t" + std::to_string(temp_count++);
             optimize.push_back({.arg1 = arg, .result = "t0"});
             optimize.push_back({.op = ">=", .arg1 = "t0", .arg2 = std::to_string(atom.dimentions.at(0)), .result = "err"});
-            optimize.push_back({.op = "iferr", .arg1 = "BAD_INDEX"});
+            optimize.push_back({.op = "iferr", .arg1 = "err_bad_index"});
             for (int i = 1; i < atom.dimentions.size(); i++) {
                 optimize.push_back({.op = "*", .arg1 = "t0", .arg2 = std::to_string(atom.dimentions.at(i)), .result = "t0"});
             }
@@ -814,7 +821,7 @@ std::any IRGenerator::visitLeftHandSide(CompiScriptParser::LeftHandSideContext *
             if (atom.dimentions.size() - 1 > 0) 
                 atom.name = "i";
             else 
-                atom.name = "i*";
+                atom.name = "i*" + getStorageType(atom);
 
             atom.label = "";
             atom.dimentions = std::vector(atom.dimentions.begin() + 1, atom.dimentions.end());

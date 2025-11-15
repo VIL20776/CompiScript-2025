@@ -41,7 +41,8 @@ public:
 
     const std::vector<Quad>& getQuadruplets();
 
-    int getSymbolSize(Symbol symbol);
+    int getSymbolSize(const Symbol &symbol);
+    std::string getStorageType(const Symbol &symbol);
 
     std::any visitProgram(CompiScriptParser::ProgramContext *ctx); 
 

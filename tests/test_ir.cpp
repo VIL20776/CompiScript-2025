@@ -119,39 +119,39 @@ let num2 = matriz[0][1];
                 )");
     std::string expected = R"(S0_lista = alloc 12 
         i = + S0_lista 0
-        i* =  1 
+        i*w =  1 
         i = + S0_lista 4
-        i* =  2 
+        i*w =  2 
         i = + S0_lista 8
-        i* =  3 
+        i*w =  3 
         t0 = 0 
         err = >= t0 3
-        iferr BAD_INDEX
+        iferr err_bad_index
         t0 = * t0 4 
         i = + S0_lista t0       
-        p = to_str i* 4
+        p = to_str i*w 4
         print
         S0_matriz = alloc 16 
         i = + S0_matriz 0
-        i* =  1 
+        i*w =  1 
         i = + S0_matriz 4
-        i* =  2 
+        i*w =  2 
         i = + S0_matriz 8
-        i* =  3 
+        i*w =  3 
         i = + S0_matriz 12
-        i* =  4 
+        i*w =  4 
         t0 =  0
         err = >= t0 2
-        iferr BAD_INDEX 
+        iferr err_bad_index 
         t0 = * t0 2
         t0 = * t0 4
         i = + S0_matriz t0
         t0 =  1
         err = >= t0 2
-        iferr BAD_INDEX 
+        iferr err_bad_index 
         t0 = * t0 4
         i = + i t0 
-        W0_num2 =  i* 
+        W0_num2 =  i*w 
     )";
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
@@ -191,12 +191,12 @@ print(perro.hablar());
         arg S2_this
         arg S2_nombre
         i = + S2_this 0
-        i* = S2_nombre
+        i*w = S2_nombre
         end F1_constructor
         begin F1_hablar  
         arg S3_this  
         i = + S3_this 0 
-        t0 = concat i* " hace ruido." 
+        t0 = concat i*w " hace ruido." 
         return t0
         end F1_hablar
         t0 = alloc 4 
@@ -211,7 +211,7 @@ print(perro.hablar());
         begin F4_hablar
         arg S5_this 
         i = + S5_this 0
-        t0 = concat i* " ladra."
+        t0 = concat i*w " ladra."
         return t0
         end F4_hablar
         t0 = alloc 4 
@@ -306,16 +306,16 @@ foreach (n in notas) {
         tag l1
         S0_notas = alloc 16
         i = + S0_notas 0
-        i* = 40
+        i*w = 40
         i = + S0_notas 4
-        i* = 60
+        i*w = 60
         i = + S0_notas 8
-        i* = 80
+        i*w = 80
         i = + S0_notas 12
-        i* = 100
+        i*w = 100
         i = S0_notas
         tag l2   
-        W0_n = i*
+        W0_n = i*w
         t0 = < W0_n 60
         if t0 l4  
         goto l5  
@@ -355,20 +355,20 @@ try {
                 )");
     std::string expected = R"(S0_lista = alloc 16
         i = + S0_lista 0
-        i* = 1
+        i*w = 1
         i = + S0_lista 4
-        i* = 2
+        i*w = 2
         i = + S0_lista 8
-        i* = 3
+        i*w = 3
         i = + S0_lista 12
-        i* = 4
+        i*w = 4
         catch = l0
         t0=100 
         err = >= t0 4 
-        iferr BAD_INDEX 
+        iferr err_bad_index 
         t0 = * t0 4  
         i = + S0_lista t0 
-        W1_peligro = i* 
+        W1_peligro = i*w 
         catch = 0  
         begin l0 
         S0_err = err 
