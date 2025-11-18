@@ -6,6 +6,7 @@
 #include "CompiScriptLexer.h"
 #include "SemanticChecker.h"
 #include "IRGenerator.h"
+#include "Mips.h"
 
 int main (int argc, char** argv) {
     using namespace CompiScript;
@@ -39,6 +40,9 @@ int main (int argc, char** argv) {
     CompiScript::CompiScriptParser parser2(&tokens2);
     ir.visitProgram(parser2.program());
 
+    auto mips = CompiScript::Mips(ir.getQuadruplets());
+    stream.close();
+
     for (int i = 2; i < argc; i++) {
         std::string option(argv[i]);
         if (option == "-print-tables") {
@@ -46,14 +50,18 @@ int main (int argc, char** argv) {
             table.printTables();
         }
         if (option == "-tac") {
-
-            std::println("{}", ir.getTAC().c_str());
-
-            std::ofstream file("tac.ir");
-            file << ir.getTAC();
+            std::ofstream file("tac.ir", std::ofstream::out);
+            auto tac = ir.getTAC();
+            file << tac;
+            file.close();
+        }
+        if (option == "-mips") {
+            std::ofstream file("mips.s", std::ofstream::out);
+            auto assembly = mips.generateAssembly();
+            file << assembly;
+            file.close();
         }
     }
 
-    stream.close();
     return 0;
 }

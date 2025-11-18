@@ -195,6 +195,7 @@ std::string Mips::generateTextSection() {
         }
 
         if (quad.op == "begin") {
+            for (auto &temp: temporaries) temp.clear();
             subrutine_sections.push(text_section);
             text_section.clear();
             text_section += quad.arg1 + ":\n";
@@ -202,6 +203,7 @@ std::string Mips::generateTextSection() {
         }
 
         if (quad.op == "end") {
+            for (auto &temp: temporaries) temp.clear();
             if (!text_section.ends_with("jr $ra\n\n")) text_section += "jr $ra\n\n";
             text_section += subrutine_sections.top();
             subrutine_sections.pop();
@@ -377,16 +379,16 @@ std::string Mips::generateTextSection() {
         for (auto &reg: temporaries) if (std::regex_match(reg, std::regex("[0-9]+"))) reg.clear();
     }
     if (subroutines_to_add & BAD_INDEX) {
-        text_section +=R"(err_bad_index:
+        text_section = R"(err_bad_index:
         li $v0, 4
         la $a0, err_bad_index_msg
         syscall
         li $v0, 10
         syscall
-        )";
+        )" + text_section;
     }
     if (subroutines_to_add & TO_STRING) {
-        text_section += R"(to_string:
+        text_section = R"(to_string:
 # Calcular longitud de cadena1
     move $t0, $a0
     li $t3, 0
@@ -444,10 +446,10 @@ done:
     move $v0, $t6      # retorno: dirección del bloque concatenado
     jr $ra
 
-)";
+)" + text_section;
     }
     if (subroutines_to_add & CONCAT_STRING) {
-    text_section += R"(concat_string: 
+    text_section = R"(concat_string: 
 # Guardar el número en $t0
     move $t0, $a0
 
@@ -506,7 +508,7 @@ escribir_cero:
     move $v0, $t3
     jr $ra
 
-)";
+)" + text_section;
     }
     return text_section + "\n";
 }

@@ -47,7 +47,13 @@ mflo $t1
 move $s2, $t1 
 sw $s2, W0_z
 
+jr $ra
+
 )";
+
+    std::ofstream out("arit_output.s", std::ofstream::out);
+    out << generated_mips;
+    out.close();
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
     expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
@@ -78,9 +84,68 @@ str0:		.asciiz	"Hola "
 str1:		.asciiz	"Mundo"
 S0_mensaje:		.word	0
 .text
+concat_string: 
+# Guardar el número en $t0
+    move $t0, $a0
+
+    # Caso especial: si el número es 0
+    beq $t0, $zero, es_cero
+
+    # Calcular cantidad de dígitos
+    li $t1, 0              # contador de dígitos
+    move $t2, $t0
+contar_digitos:
+    beq $t2, $zero, reservar_memoria
+    div $t2, 10
+    mflo $t2
+    addi $t1, $t1, 1
+    j contar_digitos
+
+es_cero:
+    li $t1, 1              # solo un dígito para '0'
+
+reservar_memoria:
+    addi $t1, $t1, 1       # +1 para '\0'
+    li $v0, 9              # syscall sbrk
+    move $a0, $t1          # tamaño en bytes
+    syscall
+    move $t3, $v0          # dirección base
+    addi $t4, $t3, 0       # puntero destino
+
+    # Si el número era 0, escribir '0' y terminar
+    beq $t0, $zero, escribir_cero
+
+    # Convertir número a ASCII (en orden inverso)
+    move $t2, $t0
+    addi $t4, $t4, $t1     # puntero al final
+    addi $t4, $t4, -1      # retroceder para '\0'
+    sb $zero, 0($t4)       # escribir terminador
+    addi $t4, $t4, -1
+
+convertir_loop:
+    beq $t2, $zero, fin_conversion
+    div $t2, 10
+    mfhi $t5               # resto
+    mflo $t2               # cociente
+    addi $t5, $t5, 48      # convertir a ASCII
+    sb $t5, 0($t4)
+    addi $t4, $t4, -1
+    j convertir_loop
+
+fin_conversion:
+    move $v0, $t3          # retorno: dirección base
+    jr $ra
+
+escribir_cero:
+    li $t5, 48             # '0'
+    sb $t5, 0($t3)
+    sb $zero, 1($t3)
+    move $v0, $t3
+    jr $ra
+
 F2_siguiente:
-li $t3, 1
-move $v0, $t3
+li $t0, 1
+move $v0, $t0
 jr $ra
 
 F0_crearContador:
@@ -102,7 +167,7 @@ move $a0, $t0
 lw $a1, 4($sp)
 addi $sp, -4
 sw $ra, ($sp)
-# jal concat_strings
+jal concat_strings
 lw $ra, ($sp)
 addi $sp, 4
 lw $a1, ($sp)
@@ -114,8 +179,8 @@ move $v0, $t1
 jr $ra
 
 main:
-la $t2, str1
-move $a0, $t2
+la $t0, str1
+move $a0, $t0
 addi $sp, -4
 sw $ra, ($sp)
 jal F0_saludar
@@ -124,11 +189,13 @@ addi $sp, 4
 move $s0, $v0
 sw $s0, S0_mensaje
 
+jr $ra
+
 )";
 
-    // std::ofstream out("output.s", std::ofstream::out);
-    // out << generated_mips;
-    // out.close();
+    std::ofstream out("func_output.s", std::ofstream::out);
+    out << generated_mips;
+    out.close();
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
     expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
@@ -180,8 +247,8 @@ move $v0, $t0
 jr $ra
 
 main:
-li $t2, 4
-move $a0, $t2
+li $t0, 4
+move $a0, $t0
 addi $sp, -4
 sw $ra, ($sp)
 jal F0_factorial
@@ -190,11 +257,13 @@ addi $sp, 4
 move $s0, $v0
 sw $s0, W0_fac
 
+jr $ra
+
 )";
 
-    // std::ofstream out("output.s", std::ofstream::out);
-    // out << generated_mips;
-    // out.close();
+    std::ofstream out("rec_output.s", std::ofstream::out);
+    out << generated_mips;
+    out.close();
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
     expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
@@ -213,9 +282,68 @@ let num2 = matriz[0][1];
                 )");
     std::string expected = R"(.data
 S0_lista:		.space	12
+err_bad_index_msg:     .asciiz "Out of bounds index was recieved"
 S0_matriz:		.space	16
 W0_num2:		.word	0
 .text
+to_string:
+# Calcular longitud de cadena1
+    move $t0, $a0
+    li $t3, 0
+len1_loop:
+    lb $t1, 0($t0)
+    beq $t1, $zero, len1_done
+    addi $t3, $t3, 1
+    addi $t0, $t0, 1
+    j len1_loop
+len1_done:
+
+    # Calcular longitud de cadena2
+    move $t0, $a1
+    li $t4, 0
+len2_loop:
+    lb $t1, 0($t0)
+    beq $t1, $zero, len2_done
+    addi $t4, $t4, 1
+    addi $t0, $t0, 1
+    j len2_loop
+len2_done:
+
+    # Calcular tamaño total = len1 + len2 + 1 (para '\0')
+    add $t5, $t3, $t4
+    addi $t5, $t5, 1
+
+    # Reservar memoria con sbrk
+    li $v0, 9          # syscall sbrk
+    move $a0, $t5      # tamaño en bytes
+    syscall
+    move $t6, $v0      # guardar dirección base en $t6 (retorno)
+
+    # Copiar cadena1 al bloque
+    move $t0, $a0      # puntero cadena1
+    move $t2, $t6      # puntero destino
+copy1_loop:
+    lb $t1, 0($t0)
+    sb $t1, 0($t2)
+    beq $t1, $zero, copy2_start
+    addi $t0, $t0, 1
+    addi $t2, $t2, 1
+    j copy1_loop
+
+copy2_start:
+    move $t0, $a1      # puntero cadena2
+copy2_loop:
+    lb $t1, 0($t0)
+    sb $t1, 0($t2)
+    beq $t1, $zero, done
+    addi $t0, $t0, 1
+    addi $t2, $t2, 1
+    j copy2_loop
+
+done:
+    move $v0, $t6      # retorno: dirección del bloque concatenado
+    jr $ra
+
 main:
 la $s0, S0_lista
 li $t0, 0
@@ -235,8 +363,8 @@ move $t1, $t0
 li $t0, 3
 sge $t8, $t1, $t0
 beq $zero, $t8, no_err0
-# beq $zero, $t9, err_bad_index
-# la $t8, err_bad_index_msg
+beq $zero, $t9, err_bad_index
+la $t8, err_bad_index_msg
 addi $sp, -4
 sw $ra, ($sp)
 la $ra, clean_err0
@@ -260,7 +388,7 @@ lw $a0, ($t8)
 move $a1, $t0
 addi $sp, -4
 sw $ra, ($sp)
-# jal to_string
+jal to_string
 lw $ra, ($sp)
 addi $sp, 4
 lw $a1, ($sp)
@@ -272,7 +400,7 @@ addi $sp, -4
 sw $a0, ($sp)
 move $a0, $v1
 li $v0, 4
-# syscall
+syscall
 lw $a0, ($sp)
 addi $sp, 4
 move $zero, $v0
@@ -299,8 +427,8 @@ move $t1, $t0
 li $t0, 2
 sge $t8, $t1, $t0
 beq $zero, $t8, no_err1
-# beq $zero, $t9, err_bad_index
-# la $t8, err_bad_index_msg
+beq $zero, $t9, err_bad_index
+la $t8, err_bad_index_msg
 addi $sp, -4
 sw $ra, ($sp)
 la $ra, clean_err1
@@ -323,8 +451,8 @@ move $t1, $t0
 li $t0, 2
 sge $t8, $t1, $t0
 beq $zero, $t8, no_err2
-# beq $zero, $t9, err_bad_index
-# la $t8, err_bad_index_msg
+beq $zero, $t9, err_bad_index
+la $t8, err_bad_index_msg
 addi $sp, -4
 sw $ra, ($sp)
 la $ra, clean_err2
@@ -341,11 +469,13 @@ mflo $t1
 add $t8, $t8, $t1
 lw $s2, ($t8)
 
+jr $ra
+
 )";
 
-    // std::ofstream out("output.s", std::ofstream::out);
-    // out << generated_mips;
-    // out.close();
+    std::ofstream out("array_output.s", std::ofstream::out);
+    out << generated_mips;
+    out.close();
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
     expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
@@ -390,27 +520,86 @@ str2:		.asciiz	" ladra."
 str3:		.asciiz	"Firulais"
 S0_perro:		.word	0
 .text
+concat_string: 
+# Guardar el número en $t0
+    move $t0, $a0
+
+    # Caso especial: si el número es 0
+    beq $t0, $zero, es_cero
+
+    # Calcular cantidad de dígitos
+    li $t1, 0              # contador de dígitos
+    move $t2, $t0
+contar_digitos:
+    beq $t2, $zero, reservar_memoria
+    div $t2, 10
+    mflo $t2
+    addi $t1, $t1, 1
+    j contar_digitos
+
+es_cero:
+    li $t1, 1              # solo un dígito para '0'
+
+reservar_memoria:
+    addi $t1, $t1, 1       # +1 para '\0'
+    li $v0, 9              # syscall sbrk
+    move $a0, $t1          # tamaño en bytes
+    syscall
+    move $t3, $v0          # dirección base
+    addi $t4, $t3, 0       # puntero destino
+
+    # Si el número era 0, escribir '0' y terminar
+    beq $t0, $zero, escribir_cero
+
+    # Convertir número a ASCII (en orden inverso)
+    move $t2, $t0
+    addi $t4, $t4, $t1     # puntero al final
+    addi $t4, $t4, -1      # retroceder para '\0'
+    sb $zero, 0($t4)       # escribir terminador
+    addi $t4, $t4, -1
+
+convertir_loop:
+    beq $t2, $zero, fin_conversion
+    div $t2, 10
+    mfhi $t5               # resto
+    mflo $t2               # cociente
+    addi $t5, $t5, 48      # convertir a ASCII
+    sb $t5, 0($t4)
+    addi $t4, $t4, -1
+    j convertir_loop
+
+fin_conversion:
+    move $v0, $t3          # retorno: dirección base
+    jr $ra
+
+escribir_cero:
+    li $t5, 48             # '0'
+    sb $t5, 0($t3)
+    sb $zero, 1($t3)
+    move $v0, $t3
+    jr $ra
+
 F4_hablar:
-li $t3, 0
-add $t8, $a0, $t3
-la $t2, str2
+li $t0, 0
+add $t8, $a0, $t0
+la $t0, str2
 addi $sp, -4
 sw $a0, ($sp)
 addi $sp, -4
 sw $a1, ($sp)
 move $a0, ($t8)
-move $a1, $t2
+move $a1, $t0
 addi $sp, -4
 sw $ra, ($sp)
-# jal concat_strings
+jal concat_strings
 lw $ra, ($sp)
 addi $sp, 4
 lw $a1, ($sp)
 addi $sp, 4
 lw $a0, ($sp)
 addi $sp, 4
-move $t3, $v0
-move $v0, $t3
+move $t1, $v0
+move $v0, $t1
 jr $ra
 
 F1_hablar:
@@ -425,7 +614,7 @@ move $a0, ($t8)
 move $a1, $t0
 addi $sp, -4
 sw $ra, ($sp)
-# jal concat_strings
+jal concat_strings
 lw $ra, ($sp)
 addi $sp, 4
 lw $a1, ($sp)
@@ -443,24 +632,24 @@ sw $a1, ($t8)
 jr $ra
 
 main:
-li $t1, 4
+li $t0, 4
 addi $sp, -4
 sw $a0, ($sp)
-move $a0, $t1
+move $a0, $t0
 li $v0, 9
 syscall
 lw $a0, ($sp)
 addi $sp, 4
-li $v0, $t2
-move $a0, $t2
-la $t1, str1
-move $a1, $t1
+li $v0, $t1
+move $a0, $t1
+la $t0, str1
+move $a1, $t0
 addi $sp, -4
 sw $ra, ($sp)
 jal F1_constructor
 lw $ra, ($sp)
 addi $sp, 4
-move $s0, $t2
+move $s0, $t1
 sw $s0, S0_animal
 move $a0, $s0
 addi $sp, -4
@@ -473,29 +662,29 @@ addi $sp, -4
 sw $a0, ($sp)
 move $a0, $v1
 li $v0, 4
-# syscall
+syscall
 lw $a0, ($sp)
 addi $sp, 4
 move $zero, $v0
 move $zero, $v1
-li $t3, 4
+li $t0, 4
 addi $sp, -4
 sw $a0, ($sp)
-move $a0, $t3
+move $a0, $t0
 li $v0, 9
 syscall
 lw $a0, ($sp)
 addi $sp, 4
-li $v0, $t4
-move $a0, $t4
-la $t3, str3
-move $a1, $t3
+li $v0, $t1
+move $a0, $t1
+la $t0, str3
+move $a1, $t0
 addi $sp, -4
 sw $ra, ($sp)
 jal F1_constructor
 lw $ra, ($sp)
 addi $sp, 4
-move $s1, $t4
+move $s1, $t1
 sw $s1, S0_perro
 move $a0, $s1
 addi $sp, -4
@@ -508,22 +697,24 @@ addi $sp, -4
 sw $a0, ($sp)
 move $a0, $v1
 li $v0, 4
-# syscall
+syscall
 lw $a0, ($sp)
 addi $sp, 4
 move $zero, $v0
 move $zero, $v1
 
+jr $ra
+
 )";
 
-    // std::ofstream out("output.s", std::ofstream::out);
-    // out << generated_mips;
-    // out.close();
+    std::ofstream out("class_output.s", std::ofstream::out);
+    out << generated_mips;
+    out.close();
 
     expected.erase(remove(expected.begin(), expected.end(), ' '), expected.end());
     expected.erase(remove(expected.begin(), expected.end(), '\t'), expected.end());
     generated_mips.erase(remove(generated_mips.begin(), generated_mips.end(), ' '), generated_mips.end());
     generated_mips.erase(remove(generated_mips.begin(), generated_mips.end(), '\t'), generated_mips.end());
 
-    // REQUIRE(expected == generated_mips);
+    REQUIRE(expected == generated_mips);
 }
