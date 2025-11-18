@@ -84,63 +84,62 @@ str0:		.asciiz	"Hola "
 str1:		.asciiz	"Mundo"
 S0_mensaje:		.word	0
 .text
-concat_string: 
-# Guardar el número en $t0
+concat_strings:
+# Calcular longitud de cadena1
     move $t0, $a0
+    li $t3, 0
+len1_loop:
+    lb $t1, 0($t0)
+    beq $t1, $zero, len1_done
+    addi $t3, $t3, 1
+    addi $t0, $t0, 1
+    j len1_loop
+len1_done:
 
-    # Caso especial: si el número es 0
-    beq $t0, $zero, es_cero
+    # Calcular longitud de cadena2
+    move $t0, $a1
+    li $t4, 0
+len2_loop:
+    lb $t1, 0($t0)
+    beq $t1, $zero, len2_done
+    addi $t4, $t4, 1
+    addi $t0, $t0, 1
+    j len2_loop
+len2_done:
 
-    # Calcular cantidad de dígitos
-    li $t1, 0              # contador de dígitos
-    move $t2, $t0
-contar_digitos:
-    beq $t2, $zero, reservar_memoria
-    div $t2, 10
-    mflo $t2
-    addi $t1, $t1, 1
-    j contar_digitos
+    # Calcular tamaño total = len1 + len2 + 1 (para '\0')
+    add $t5, $t3, $t4
+    addi $t5, $t5, 1
 
-es_cero:
-    li $t1, 1              # solo un dígito para '0'
-
-reservar_memoria:
-    addi $t1, $t1, 1       # +1 para '\0'
-    li $v0, 9              # syscall sbrk
-    move $a0, $t1          # tamaño en bytes
+    move $t0, $a0      # puntero cadena1
+    # Reservar memoria con sbrk
+    li $v0, 9          # syscall sbrk
+    move $a0, $t5      # tamaño en bytes
     syscall
-    move $t3, $v0          # dirección base
-    addi $t4, $t3, 0       # puntero destino
+    move $t6, $v0      # guardar dirección base en $t6 (retorno)
 
-    # Si el número era 0, escribir '0' y terminar
-    beq $t0, $zero, escribir_cero
+    # Copiar cadena1 al bloque
+    move $t2, $t6      # puntero destino
+copy1_loop:
+    lb $t1, 0($t0)
+    sb $t1, 0($t2)
+    beq $t1, $zero, copy2_start
+    addi $t0, $t0, 1
+    addi $t2, $t2, 1
+    j copy1_loop
 
-    # Convertir número a ASCII (en orden inverso)
-    move $t2, $t0
-    addi $t4, $t4, $t1     # puntero al final
-    addi $t4, $t4, -1      # retroceder para '\0'
-    sb $zero, 0($t4)       # escribir terminador
-    addi $t4, $t4, -1
+copy2_start:
+    move $t0, $a1      # puntero cadena2
+copy2_loop:
+    lb $t1, 0($t0)
+    sb $t1, 0($t2)
+    beq $t1, $zero, done
+    addi $t0, $t0, 1
+    addi $t2, $t2, 1
+    j copy2_loop
 
-convertir_loop:
-    beq $t2, $zero, fin_conversion
-    div $t2, 10
-    mfhi $t5               # resto
-    mflo $t2               # cociente
-    addi $t5, $t5, 48      # convertir a ASCII
-    sb $t5, 0($t4)
-    addi $t4, $t4, -1
-    j convertir_loop
-
-fin_conversion:
-    move $v0, $t3          # retorno: dirección base
-    jr $ra
-
-escribir_cero:
-    li $t5, 48             # '0'
-    sb $t5, 0($t3)
-    sb $zero, 1($t3)
-    move $v0, $t3
+done:
+    move $v0, $t6      # retorno: dirección del bloque concatenado
     jr $ra
 
 F2_siguiente:
@@ -286,62 +285,65 @@ err_bad_index_msg:     .asciiz "Out of bounds index was recieved"
 S0_matriz:		.space	16
 W0_num2:		.word	0
 .text
-to_string:
-# Calcular longitud de cadena1
+to_string: 
+# Guardar el número en $t0
     move $t0, $a0
-    li $t3, 0
-len1_loop:
-    lb $t1, 0($t0)
-    beq $t1, $zero, len1_done
-    addi $t3, $t3, 1
-    addi $t0, $t0, 1
-    j len1_loop
-len1_done:
 
-    # Calcular longitud de cadena2
-    move $t0, $a1
-    li $t4, 0
-len2_loop:
-    lb $t1, 0($t0)
-    beq $t1, $zero, len2_done
-    addi $t4, $t4, 1
-    addi $t0, $t0, 1
-    j len2_loop
-len2_done:
+    # Caso especial: si el número es 0
+    beq $t0, $zero, es_cero
 
-    # Calcular tamaño total = len1 + len2 + 1 (para '\0')
-    add $t5, $t3, $t4
-    addi $t5, $t5, 1
+    # Calcular cantidad de dígitos
+    li $t1, 0              # contador de dígitos
+    move $t2, $t0
+contar_digitos:
+    beq $t2, $zero, reservar_memoria
+    li $t3, 10
+    div $t2, $t3
+    mflo $t2
+    addi $t1, $t1, 1
+    j contar_digitos
 
-    # Reservar memoria con sbrk
-    li $v0, 9          # syscall sbrk
-    move $a0, $t5      # tamaño en bytes
+es_cero:
+    li $t1, 1              # solo un dígito para '0'
+
+reservar_memoria:
+    addi $t1, $t1, 1       # +1 para '\0'
+    li $v0, 9              # syscall sbrk
+    move $a0, $t1          # tamaño en bytes
     syscall
-    move $t6, $v0      # guardar dirección base en $t6 (retorno)
+    move $t3, $v0          # dirección base
+    addi $t4, $t3, 0       # puntero destino
 
-    # Copiar cadena1 al bloque
-    move $t0, $a0      # puntero cadena1
-    move $t2, $t6      # puntero destino
-copy1_loop:
-    lb $t1, 0($t0)
-    sb $t1, 0($t2)
-    beq $t1, $zero, copy2_start
-    addi $t0, $t0, 1
-    addi $t2, $t2, 1
-    j copy1_loop
+    # Si el número era 0, escribir '0' y terminar
+    beq $t0, $zero, escribir_cero
 
-copy2_start:
-    move $t0, $a1      # puntero cadena2
-copy2_loop:
-    lb $t1, 0($t0)
-    sb $t1, 0($t2)
-    beq $t1, $zero, done
-    addi $t0, $t0, 1
-    addi $t2, $t2, 1
-    j copy2_loop
+    # Convertir número a ASCII (en orden inverso)
+    move $t2, $t0
+    add $t4, $t4, $t1     # puntero al final
+    addi $t4, $t4, -1      # retroceder para '\0'
+    sb $zero, 0($t4)       # escribir terminador
+    addi $t4, $t4, -1
 
-done:
-    move $v0, $t6      # retorno: dirección del bloque concatenado
+convertir_loop:
+    beq $t2, $zero, fin_conversion
+    li $t6, 10
+    div $t2, $t6
+    mfhi $t5               # resto
+    mflo $t2               # cociente
+    addi $t5, $t5, 48      # convertir a ASCII
+    sb $t5, 0($t4)
+    addi $t4, $t4, -1
+    j convertir_loop
+
+fin_conversion:
+    move $v0, $t3          # retorno: dirección base
+    jr $ra
+
+escribir_cero:
+    li $t5, 48             # '0'
+    sb $t5, 0($t3)
+    sb $zero, 1($t3)
+    move $v0, $t3
     jr $ra
 
 main:
@@ -403,8 +405,8 @@ li $v0, 4
 syscall
 lw $a0, ($sp)
 addi $sp, 4
-move $zero, $v0
-move $zero, $v1
+move $v0, $zero
+move $v1, $zero
 la $s1, S0_matriz
 li $t0, 0
 add $t8, $s1, $t0
@@ -520,63 +522,62 @@ str2:		.asciiz	" ladra."
 str3:		.asciiz	"Firulais"
 S0_perro:		.word	0
 .text
-concat_string: 
-# Guardar el número en $t0
+concat_strings:
+# Calcular longitud de cadena1
     move $t0, $a0
+    li $t3, 0
+len1_loop:
+    lb $t1, 0($t0)
+    beq $t1, $zero, len1_done
+    addi $t3, $t3, 1
+    addi $t0, $t0, 1
+    j len1_loop
+len1_done:
 
-    # Caso especial: si el número es 0
-    beq $t0, $zero, es_cero
+    # Calcular longitud de cadena2
+    move $t0, $a1
+    li $t4, 0
+len2_loop:
+    lb $t1, 0($t0)
+    beq $t1, $zero, len2_done
+    addi $t4, $t4, 1
+    addi $t0, $t0, 1
+    j len2_loop
+len2_done:
 
-    # Calcular cantidad de dígitos
-    li $t1, 0              # contador de dígitos
-    move $t2, $t0
-contar_digitos:
-    beq $t2, $zero, reservar_memoria
-    div $t2, 10
-    mflo $t2
-    addi $t1, $t1, 1
-    j contar_digitos
+    # Calcular tamaño total = len1 + len2 + 1 (para '\0')
+    add $t5, $t3, $t4
+    addi $t5, $t5, 1
 
-es_cero:
-    li $t1, 1              # solo un dígito para '0'
-
-reservar_memoria:
-    addi $t1, $t1, 1       # +1 para '\0'
-    li $v0, 9              # syscall sbrk
-    move $a0, $t1          # tamaño en bytes
+    move $t0, $a0      # puntero cadena1
+    # Reservar memoria con sbrk
+    li $v0, 9          # syscall sbrk
+    move $a0, $t5      # tamaño en bytes
     syscall
-    move $t3, $v0          # dirección base
-    addi $t4, $t3, 0       # puntero destino
+    move $t6, $v0      # guardar dirección base en $t6 (retorno)
 
-    # Si el número era 0, escribir '0' y terminar
-    beq $t0, $zero, escribir_cero
+    # Copiar cadena1 al bloque
+    move $t2, $t6      # puntero destino
+copy1_loop:
+    lb $t1, 0($t0)
+    sb $t1, 0($t2)
+    beq $t1, $zero, copy2_start
+    addi $t0, $t0, 1
+    addi $t2, $t2, 1
+    j copy1_loop
 
-    # Convertir número a ASCII (en orden inverso)
-    move $t2, $t0
-    addi $t4, $t4, $t1     # puntero al final
-    addi $t4, $t4, -1      # retroceder para '\0'
-    sb $zero, 0($t4)       # escribir terminador
-    addi $t4, $t4, -1
+copy2_start:
+    move $t0, $a1      # puntero cadena2
+copy2_loop:
+    lb $t1, 0($t0)
+    sb $t1, 0($t2)
+    beq $t1, $zero, done
+    addi $t0, $t0, 1
+    addi $t2, $t2, 1
+    j copy2_loop
 
-convertir_loop:
-    beq $t2, $zero, fin_conversion
-    div $t2, 10
-    mfhi $t5               # resto
-    mflo $t2               # cociente
-    addi $t5, $t5, 48      # convertir a ASCII
-    sb $t5, 0($t4)
-    addi $t4, $t4, -1
-    j convertir_loop
-
-fin_conversion:
-    move $v0, $t3          # retorno: dirección base
-    jr $ra
-
-escribir_cero:
-    li $t5, 48             # '0'
-    sb $t5, 0($t3)
-    sb $zero, 1($t3)
-    move $v0, $t3
+done:
+    move $v0, $t6      # retorno: dirección del bloque concatenado
     jr $ra
 
 F4_hablar:
@@ -587,7 +588,7 @@ addi $sp, -4
 sw $a0, ($sp)
 addi $sp, -4
 sw $a1, ($sp)
-move $a0, ($t8)
+lw $a0, ($t8)
 move $a1, $t0
 addi $sp, -4
 sw $ra, ($sp)
@@ -610,7 +611,7 @@ addi $sp, -4
 sw $a0, ($sp)
 addi $sp, -4
 sw $a1, ($sp)
-move $a0, ($t8)
+lw $a0, ($t8)
 move $a1, $t0
 addi $sp, -4
 sw $ra, ($sp)
@@ -640,7 +641,7 @@ li $v0, 9
 syscall
 lw $a0, ($sp)
 addi $sp, 4
-li $v0, $t1
+move $t1, $v0
 move $a0, $t1
 la $t0, str1
 move $a1, $t0
@@ -665,8 +666,8 @@ li $v0, 4
 syscall
 lw $a0, ($sp)
 addi $sp, 4
-move $zero, $v0
-move $zero, $v1
+move $v0, $zero
+move $v1, $zero
 li $t0, 4
 addi $sp, -4
 sw $a0, ($sp)
@@ -675,7 +676,7 @@ li $v0, 9
 syscall
 lw $a0, ($sp)
 addi $sp, 4
-li $v0, $t1
+move $t1, $v0
 move $a0, $t1
 la $t0, str3
 move $a1, $t0
@@ -700,8 +701,8 @@ li $v0, 4
 syscall
 lw $a0, ($sp)
 addi $sp, 4
-move $zero, $v0
-move $zero, $v1
+move $v0, $zero
+move $v1, $zero
 
 jr $ra
 

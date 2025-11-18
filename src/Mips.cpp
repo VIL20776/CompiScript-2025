@@ -229,8 +229,8 @@ std::string Mips::generateTextSection() {
             text_section += "syscall\n";
             text_section += "lw $a0, ($sp)\n";
             text_section += "addi $sp, 4\n";
-            text_section += "move $zero, $v0\n";
-            text_section += "move $zero, $v1\n";
+            text_section += "move $v0, $zero\n";
+            text_section += "move $v1, $zero\n";
             continue;
         }
 
@@ -264,7 +264,7 @@ std::string Mips::generateTextSection() {
             text_section += "syscall\n";
             text_section += "lw $a0, ($sp)\n";
             text_section += "addi $sp, 4\n";
-            text_section += "li $v0, " + rx.reg + "\n";
+            text_section += "move " + rx.reg + ", $v0\n";
         }
         if (op == "return") {
             text_section += "move $v0, " + ry.reg + "\n";
@@ -336,12 +336,19 @@ std::string Mips::generateTextSection() {
             text_section += "sw $a0, ($sp)\n";
             text_section += "addi $sp, -4\n";
             text_section += "sw $a1, ($sp)\n";
-            text_section += "move $a0, " + ry.reg + "\n";
 
-            if (rz.reg == "$a0")
-                text_section += "lw $a1, 4($sp)\n";
+            if (ry.reg.starts_with("(")) 
+                text_section += "lw $a0, " + ry.reg + "\n";
             else
+                text_section += "move $a0, " + ry.reg + "\n";
+
+            if (rz.reg.starts_with("(")) {
+                text_section += "lw $a1, " + rz.reg + "\n";
+            } else if (rz.reg == "$a0") {
+                text_section += "lw $a1, 4($sp)\n";
+            } else {
                 text_section += "move $a1, " + rz.reg + "\n";
+            }
 
             text_section += "addi $sp, -4\n";
             text_section += "sw $ra, ($sp)\n";
@@ -387,8 +394,8 @@ std::string Mips::generateTextSection() {
         syscall
         )" + text_section;
     }
-    if (subroutines_to_add & TO_STRING) {
-        text_section = R"(to_string:
+    if (subroutines_to_add & CONCAT_STRING) {
+        text_section = R"(concat_strings:
 # Calcular longitud de cadena1
     move $t0, $a0
     li $t3, 0
@@ -415,6 +422,7 @@ len2_done:
     add $t5, $t3, $t4
     addi $t5, $t5, 1
 
+    move $t0, $a0      # puntero cadena1
     # Reservar memoria con sbrk
     li $v0, 9          # syscall sbrk
     move $a0, $t5      # tamaño en bytes
@@ -422,7 +430,6 @@ len2_done:
     move $t6, $v0      # guardar dirección base en $t6 (retorno)
 
     # Copiar cadena1 al bloque
-    move $t0, $a0      # puntero cadena1
     move $t2, $t6      # puntero destino
 copy1_loop:
     lb $t1, 0($t0)
@@ -448,8 +455,8 @@ done:
 
 )" + text_section;
     }
-    if (subroutines_to_add & CONCAT_STRING) {
-    text_section = R"(concat_string: 
+    if (subroutines_to_add & TO_STRING) {
+    text_section = R"(to_string: 
 # Guardar el número en $t0
     move $t0, $a0
 
@@ -461,7 +468,8 @@ done:
     move $t2, $t0
 contar_digitos:
     beq $t2, $zero, reservar_memoria
-    div $t2, 10
+    li $t3, 10
+    div $t2, $t3
     mflo $t2
     addi $t1, $t1, 1
     j contar_digitos
@@ -482,14 +490,15 @@ reservar_memoria:
 
     # Convertir número a ASCII (en orden inverso)
     move $t2, $t0
-    addi $t4, $t4, $t1     # puntero al final
+    add $t4, $t4, $t1     # puntero al final
     addi $t4, $t4, -1      # retroceder para '\0'
     sb $zero, 0($t4)       # escribir terminador
     addi $t4, $t4, -1
 
 convertir_loop:
     beq $t2, $zero, fin_conversion
-    div $t2, 10
+    li $t6, 10
+    div $t2, $t6
     mfhi $t5               # resto
     mflo $t2               # cociente
     addi $t5, $t5, 48      # convertir a ASCII
